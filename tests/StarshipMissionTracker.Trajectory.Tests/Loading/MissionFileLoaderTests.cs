@@ -114,6 +114,20 @@ public sealed class MissionFileLoaderTests : IDisposable
         Assert.Equal(t0, loaded.Clock.LaunchTimeUtc);
     }
 
+    [Theory]
+    [InlineData("CON")]
+    [InlineData("nul")]
+    [InlineData("lpt1")]
+    [InlineData("demo-ift\\n")]
+    public async Task LoadAsync_ReservedOrNewlineMissionCode_ThrowsNamingField(string code)
+    {
+        var (mission, dir) = CopyDemo("demo-ift.json", "\"missionCode\": \"demo-ift\"", $"\"missionCode\": \"{code}\"");
+
+        var ex = await Assert.ThrowsAsync<MissionDataException>(() => Load(mission, dir, null));
+
+        Assert.Contains("missionCode", ex.Message);
+    }
+
     [Fact]
     public async Task LoadAsync_UnknownEnumValue_ThrowsNamingFileFieldAndValue()
     {

@@ -83,7 +83,8 @@ public sealed partial class MissionFileLoader : IMissionLoader
     }
 
     /// <summary>Mission codes become part of file names, so only a safe character set is accepted (no path traversal).</summary>
-    [GeneratedRegex("^[A-Za-z0-9][A-Za-z0-9_-]*$")]
+    /// <remarks>\z (not $) so a trailing newline fails; Windows reserved device names (CON, NUL, COM1, ...) are rejected.</remarks>
+    [GeneratedRegex(@"^(?!(?i:con|prn|aux|nul|com[1-9]|lpt[1-9])\z)[A-Za-z0-9][A-Za-z0-9_-]*\z")]
     private static partial Regex MissionCodePattern();
 
     private static MissionConfig BuildConfig(MissionFileDto dto, string file, bool hasOverride)

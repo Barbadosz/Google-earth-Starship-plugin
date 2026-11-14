@@ -53,6 +53,14 @@ the check shows a different sign for roll or tilt.
 | Component | Version | Licence | Copyright | Source |
 |---|---|---|---|---|
 | GeographicLib.NET (WGS84 geodesics, NuGet package) | 2.3.2 | MIT | (c) Charles Karney and GeographicLib.NET contributors | https://github.com/noelex/GeographicLib.NET |
+| Serilog (logging, NuGet package) | 4.3.0 | Apache-2.0 | (c) Serilog Contributors | https://github.com/serilog/serilog |
+| Serilog.Sinks.Console (NuGet package) | 6.1.1 | Apache-2.0 | (c) Serilog Contributors | https://github.com/serilog/serilog-sinks-console |
+| Serilog.Sinks.File (NuGet package) | 7.0.0 | Apache-2.0 | (c) Serilog Contributors | https://github.com/serilog/serilog-sinks-file |
 
-The package is used by `StarshipMissionTracker.Trajectory` for geodesic distance, azimuth and interpolation. It is not
-bundled as source; it is restored from NuGet at build time.
+GeographicLib.NET is used by `StarshipMissionTracker.Trajectory` for geodesic distance, azimuth and interpolation. The
+Serilog packages are used only by `StarshipMissionTracker.Cli` (console + rolling file log). None is bundled as source;
+they are restored from NuGet at build time.
+
+The KML event marker style references Google Earth's built-in icon
+`https://maps.google.com/mapfiles/kml/shapes/placemark_circle.png` by URL; it is not bundled in the repository or the KMZ.
+Google Earth Pro needs internet access to draw it (offline the event icons are missing).

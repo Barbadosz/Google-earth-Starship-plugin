@@ -4,6 +4,11 @@
     <ProjectReference Include="..\StarshipMissionTracker.Trajectory\StarshipMissionTracker.Trajectory.csproj" />
     <ProjectReference Include="..\StarshipMissionTracker.Kml\StarshipMissionTracker.Kml.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Serilog" />
+    <PackageReference Include="Serilog.Sinks.Console" />
+    <PackageReference Include="Serilog.Sinks.File" />
+  </ItemGroup>
   <PropertyGroup>
     <OutputType>Exe</OutputType>
   </PropertyGroup>

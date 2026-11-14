@@ -47,3 +47,12 @@ along the heading at a pitch angle `p` above the horizon, write
 `tilt = 90 - p`. This convention is to be confirmed visually in Google Earth Pro
 (the placeholder models are meant for exactly that check); correct this section if
 the check shows a different sign for roll or tilt.
+
+## Third-party components
+
+| Component | Version | Licence | Copyright | Source |
+|---|---|---|---|---|
+| GeographicLib.NET (WGS84 geodesics, NuGet package) | 2.3.2 | MIT | (c) Charles Karney and GeographicLib.NET contributors | https://github.com/noelex/GeographicLib.NET |
+
+The package is used by `StarshipMissionTracker.Trajectory` for geodesic distance, azimuth and interpolation. It is not
+bundled as source; it is restored from NuGet at build time.

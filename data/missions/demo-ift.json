@@ -1,0 +1,26 @@
+{
+  "missionCode": "demo-ift",
+  "name": "Demo IFT-like suborbital flight (illustrative)",
+  "description": "ILLUSTRATIVE DEMO ONLY. All trajectory points and events are an approximation of a generic IFT-like suborbital profile (Starbase to an Indian Ocean splashdown) and are NOT derived from official flight data or telemetry. The numbers (positions, altitudes, timings, implied speeds) are rough illustrative values shaped from general public knowledge of such flights. Quality: Simulated. The launchTimeUtc below is a placeholder and must be set manually (or overridden with --launch-time) to the intended launch time.",
+  "launchTimeUtc": "2099-01-01T00:00:00Z",
+  "quality": "Simulated",
+  "source": "Illustrative approximation, not derived from official flight data",
+  "vehicles": [
+    { "type": "Starship", "name": "Starship (illustrative)" },
+    { "type": "SuperHeavy", "name": "Super Heavy (illustrative)" }
+  ],
+  "events": [
+    { "t": 0, "type": "Liftoff", "name": "Liftoff", "description": "Illustrative liftoff from the launch site.", "lat": 25.9972, "lon": -97.1566, "altM": 5, "vehicle": null, "quality": "Simulated", "source": "Illustrative approximation, not derived from official flight data" },
+    { "t": 60, "type": "MaxQ", "name": "Max Q", "description": "Illustrative point of maximum dynamic pressure.", "lat": 25.9972, "lon": -97.0981, "altM": 12000, "vehicle": null, "quality": "Simulated", "source": "Illustrative approximation, not derived from official flight data" },
+    { "t": 156, "type": "Meco", "name": "MECO", "description": "Illustrative Super Heavy main engine cutoff.", "lat": 25.9942, "lon": -96.2187, "altM": 66000, "vehicle": null, "quality": "Simulated", "source": "Illustrative approximation, not derived from official flight data" },
+    { "t": 160, "type": "StageSeparation", "name": "Stage Separation", "description": "Illustrative hot staging / stage separation.", "lat": 25.9938, "lon": -96.1621, "altM": 68000, "vehicle": null, "quality": "Simulated", "source": "Illustrative approximation, not derived from official flight data" },
+    { "t": 172, "type": "BoosterBoostback", "name": "Booster Boostback", "description": "Illustrative Super Heavy boostback burn.", "lat": 25.9925, "lon": -95.991, "altM": 72000, "vehicle": "SuperHeavy", "quality": "Simulated", "source": "Illustrative approximation, not derived from official flight data" },
+    { "t": 470, "type": "BoosterLandingBurn", "name": "Booster Landing Burn", "description": "Illustrative Super Heavy landing burn.", "lat": 25.9972, "lon": -97.07, "altM": 3500, "vehicle": "SuperHeavy", "quality": "Simulated", "source": "Illustrative approximation, not derived from official flight data" },
+    { "t": 500, "type": "StarshipEngineCutoff", "name": "Starship Engine Cutoff", "description": "Illustrative Starship engine cutoff.", "lat": 25.1747, "lon": -81.6955, "altM": 150000, "vehicle": "Starship", "quality": "Simulated", "source": "Illustrative approximation, not derived from official flight data" },
+    { "t": 520, "type": "BoosterLanding", "name": "Booster Landing", "description": "Illustrative Super Heavy return to the launch site.", "lat": 25.9972, "lon": -97.1566, "altM": 5, "vehicle": "SuperHeavy", "quality": "Simulated", "source": "Illustrative approximation, not derived from official flight data" },
+    { "t": 520, "type": "Coast", "name": "Coast", "description": "Illustrative start of the coast phase.", "vehicle": "Starship", "quality": "Simulated", "source": "Illustrative approximation, not derived from official flight data" },
+    { "t": 2800, "type": "Reentry", "name": "Reentry", "description": "Illustrative atmospheric reentry interface.", "lat": -21.4038, "lon": 46.3342, "altM": 100000, "vehicle": "Starship", "quality": "Simulated", "source": "Illustrative approximation, not derived from official flight data" },
+    { "t": 3870, "type": "LandingBurn", "name": "Landing Burn", "description": "Illustrative pre-splashdown flip and landing burn.", "lat": -25.7829, "lon": 74.9487, "altM": 600, "vehicle": "Starship", "quality": "Simulated", "source": "Illustrative approximation, not derived from official flight data" },
+    { "t": 3900, "type": "SplashdownOrLanding", "name": "Splashdown", "description": "Illustrative Indian Ocean splashdown.", "lat": -25.783, "lon": 74.9506, "altM": 0, "vehicle": "Starship", "quality": "Simulated", "source": "Illustrative approximation, not derived from official flight data" }
+  ]
+}

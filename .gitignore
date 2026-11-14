@@ -5,3 +5,10 @@ ai/
 output/
 logs/
 *.db
+
+# .NET build artefacts
+bin/
+obj/
+*.user
+.vs/
+TestResults/

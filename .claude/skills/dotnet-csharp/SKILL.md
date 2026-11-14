@@ -22,8 +22,8 @@ Rules of the project are in `ai/KONVENCIOK.md`; this file only lists what is eas
 - Invalid input: `ArgumentException`/own exception, never a silent 0.
 
 ## Testing (xUnit v3)
-- Packages: `xunit.v3`, `xunit.runner.visualstudio`, `Microsoft.NET.Test.Sdk`. v3 test projects are executables (`OutputType Exe`), the `dotnet new xunit3` template sets this up.
-- .NET 10 `dotnet test` supports Microsoft.Testing.Platform natively; if the runner complains about VSTest mode, check `global.json` `"test": { "runner": "Microsoft.Testing.Platform" }` (verify against the installed SDK, do not guess).
+- Package: only `xunit.v3` (version in `Directory.Packages.props`). With Microsoft.Testing.Platform, `xunit.runner.visualstudio` and `Microsoft.NET.Test.Sdk` are NOT needed; do not add them. v3 test projects are executables (`OutputType Exe`). The `xunit3` template is not installed on SDK 10.0.404; copy an existing test csproj instead.
+- `global.json` must keep `"test": { "runner": "Microsoft.Testing.Platform" }`; without it `dotnet test` fails in VSTest mode on the .NET 10 SDK (verified 2026-11-14, SDK 10.0.404).
 - Plain `Assert`, no FluentAssertions. Names `Method_Condition_Result`. Theory data for reference values, with source in a comment.
 - Run through the test runner of `ai-protokoll` (`teszt.mjs`), command is `dotnet test StarshipMissionTracker.sln`.
 - Golden files: store under `tests/<proj>/Golden/`, copy to output via csproj `<None Update ... CopyToOutputDirectory>`. Regenerating a golden file is a deliberate, reviewed act.

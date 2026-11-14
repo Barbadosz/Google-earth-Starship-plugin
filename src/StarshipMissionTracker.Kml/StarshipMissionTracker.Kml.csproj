@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\StarshipMissionTracker.Core\StarshipMissionTracker.Core.csproj" />
+    <ProjectReference Include="..\StarshipMissionTracker.Trajectory\StarshipMissionTracker.Trajectory.csproj" />
+  </ItemGroup>
+</Project>

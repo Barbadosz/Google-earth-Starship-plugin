@@ -1,0 +1,7 @@
+# AI munkamappa – csak helyben él, sosem kerül gitre
+ai/
+
+# Generált kimenet, naplók, helyi adatbázis
+output/
+logs/
+*.db

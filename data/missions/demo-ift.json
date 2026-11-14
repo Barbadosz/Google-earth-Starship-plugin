@@ -6,8 +6,8 @@
   "quality": "Simulated",
   "source": "Illustrative approximation, not derived from official flight data",
   "vehicles": [
-    { "type": "Starship", "name": "Starship (illustrative)" },
-    { "type": "SuperHeavy", "name": "Super Heavy (illustrative)" }
+    { "type": "Starship", "name": "Starship (illustrative)", "modelPath": "models/starship.dae" },
+    { "type": "SuperHeavy", "name": "Super Heavy (illustrative)", "modelPath": "models/superheavy.dae" }
   ],
   "events": [
     { "t": 0, "type": "Liftoff", "name": "Liftoff", "description": "Illustrative liftoff from the launch site.", "lat": 25.9972, "lon": -97.1566, "altM": 5, "vehicle": null, "quality": "Simulated", "source": "Illustrative approximation, not derived from official flight data" },

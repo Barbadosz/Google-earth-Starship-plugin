@@ -1,0 +1,38 @@
+using System.Xml.Linq;
+using StarshipMissionTracker.Core.Models;
+using static StarshipMissionTracker.Kml.Generators.KmlXml;
+
+namespace StarshipMissionTracker.Kml.Generators;
+
+/// <summary>
+/// Static, always visible path line (no time): the whole flight path is shown without the time slider.
+/// Works for any <see cref="FlightPath"/>; the style follows the path type and quality.
+/// </summary>
+public static class PlannedPathGenerator
+{
+    /// <summary>Placemark with a LineString (absolute, extrude 1, tessellate 0).</summary>
+    public static XElement CreatePlacemark(Vehicle vehicle, FlightPath path)
+    {
+        ArgumentNullException.ThrowIfNull(vehicle);
+        ArgumentNullException.ThrowIfNull(path);
+        if (path.Points.Count == 0)
+        {
+            throw new ArgumentException("The flight path has no points.", nameof(path));
+        }
+
+        var coordinates = string.Join(
+            " ",
+            path.Points.Select(p => Coordinates(p.Latitude, p.Longitude, p.AltitudeMeters)));
+
+        return K("Placemark",
+            K("name", $"{vehicle.Name} – {KmlPathInfo.Kind(path)} path"),
+            K("description", KmlPathInfo.Description(path)),
+            K("styleUrl", "#" + KmlLod.PathStyleId(path.Type, vehicle.Type, path.Quality)),
+            KmlPathInfo.Extended(vehicle, path),
+            K("LineString",
+                K("extrude", "1"),
+                K("tessellate", "0"),
+                K("altitudeMode", "absolute"),
+                K("coordinates", coordinates)));
+    }
+}

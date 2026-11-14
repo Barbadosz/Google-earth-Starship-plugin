@@ -4,8 +4,7 @@ All assets in this repository are original work, generated procedurally by
 `tools/assets/Generate-Assets.ps1` (PowerShell + System.Drawing, no third-party
 data). They contain no SpaceX imagery, logos or models.
 
-**Licence:** same as repository licence – LICENSE file pending (the repository
-has no LICENSE file yet; this must be added before the repo is made public).
+**Licence:** same as the repository licence – MIT (see [LICENSE](../LICENSE)).
 
 Regenerate with: `powershell -ExecutionPolicy Bypass -File tools/assets/Generate-Assets.ps1`
 

@@ -64,3 +64,11 @@ they are restored from NuGet at build time.
 The KML event marker style references Google Earth's built-in icon
 `https://maps.google.com/mapfiles/kml/shapes/placemark_circle.png` by URL; it is not bundled in the repository or the KMZ.
 Google Earth Pro needs internet access to draw it (offline the event icons are missing).
+
+## Test-only packages
+
+Used only by the projects under `tests/`; not part of the built tool or the KMZ.
+
+| Component | Version | Licence | Source |
+|---|---|---|---|
+| xunit.v3 (test framework, NuGet package) | 4.0.3 | Apache-2.0 | https://github.com/xunit/xunit |

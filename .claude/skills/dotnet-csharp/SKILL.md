@@ -28,9 +28,20 @@ Rules of the project are in `ai/KONVENCIOK.md`; this file only lists what is eas
 - Run through the test runner of `ai-protokoll` (`teszt.mjs`), command is `dotnet test StarshipMissionTracker.sln`.
 - Golden files: store under `tests/<proj>/Golden/`, copy to output via csproj `<None Update ... CopyToOutputDirectory>`. Regenerating a golden file is a deliberate, reviewed act.
 
+## Time (TimeProvider)
+- Inject `TimeProvider` (register `TimeProvider.System` in `Program.cs`); `GetUtcNow()` replaces `DateTime.UtcNow`. KML generators do not read a clock: they get `nowUtc`/T0 as parameters.
+- Tests: own `ManualTimeProvider : TimeProvider` (override `GetUtcNow`, `Advance(TimeSpan)`), no extra NuGet. `Microsoft.Extensions.TimeProvider.Testing` (`FakeTimeProvider`) exists but is deliberately not used here. For simulator timers/delays use `timeProvider.CreateTimer`/`Task.Delay(..., timeProvider)`, otherwise the fake clock does not drive them; prefer a testable `TickAsync()` method over waiting for the loop.
+
+## Api (Minimal API, `Microsoft.NET.Sdk.Web`)
+- Kestrel bound to `http://127.0.0.1:8080` (loopback only) via config. Endpoints in `Api/Endpoints/` as `MapXxx(this IEndpointRouteBuilder)` extension methods; `Program.cs` only wires (hot spot).
+- `Api`, `Data`, `Telemetry` log through `ILogger<T>` (never `Serilog.Log` static); Serilog is the host provider (`builder.Host.UseSerilog(...)`, package `Serilog.AspNetCore`). The Cli keeps using Serilog directly.
+- Simulator = `BackgroundService` (`ExecuteAsync` with `stoppingToken`); catch and log exceptions in the loop, a throw stops the host by default. Do not use scoped services directly (scope factory).
+- Options: `IOptions<T>` + `ValidateOnStart`. Mutating endpoints check `HttpContext.Connection.RemoteIpAddress` is loopback.
+- Tests: integration with `WebApplicationFactory<Program>` (`Microsoft.AspNetCore.Mvc.Testing`; needs `public partial class Program { }`); override services in `ConfigureWebHost` (`TimeProvider` -> ManualTimeProvider, temp SQLite file path, disable the real simulator `BackgroundService`). Fallback if Mvc.Testing misbehaves under xUnit v3 / Microsoft.Testing.Platform (UNVERIFIED in this repo; the package is built around the VSTest-era setup): use `Microsoft.AspNetCore.TestHost` (`new HostBuilder().ConfigureWebHost(w => w.UseTestServer()...)` or `WebApplication` + `UseTestServer`) and `GetTestClient()`. Delete the temp db in `Dispose`.
+
 ## Logging
 - `Microsoft.Extensions.Logging` + `Serilog.Extensions.Hosting`/`Serilog.Sinks.File`+`Console`. Library code takes `ILogger<T>` only.
-- File: `logs/starship-.log` (`rollingInterval: Day`), relative to the working directory; run from the repo root so it lands in `D:\Dev\Starship google earth\logs\`. Level from `appsettings.json` (Debug in dev, Information in release).
+- File: `logs/starship-.log` (`rollingInterval: Day`), relative to the working directory; run from the repo root so it lands in `logs/` under the repo root. Level from `appsettings.json` (Debug in dev, Information in release).
 - Grep the log for the mission code / exception type; never read it whole. Never log secrets.
 
 ## Configuration

@@ -31,8 +31,17 @@ Document > Folders: Mission Information, Planned Trajectory (Starship, Super Hea
 - Prefer `System.Xml.Linq` (`XDocument`/`XNamespace`) over string concatenation: escaping and namespaces are correct. Templates in `Kml/Templates/` only for static fragments.
 - The Kml module has no network and no DB; it takes models in, returns `string`/`byte[]`.
 
-## NetworkLink (M2+)
-`<NetworkLink><Link><href>http://localhost:.../kml/...</href><refreshMode>onInterval</refreshMode><refreshInterval>N</refreshInterval>` ; for live data use `onInterval` with a sensible minimum (>= 5 s), or `onRequest`. Server must return `application/vnd.google-earth.kml+xml` / `...kmz`.
+## NetworkLink (M2+, server KML in `Kml/Dynamic/`)
+Master doc holds `NetworkLink`s to `http://127.0.0.1:8080/kml/...` (planned / history / live):
+`<NetworkLink><flyToView>0</flyToView><refreshVisibility>0</refreshVisibility><Link><href>..</href><refreshMode>onInterval</refreshMode><refreshInterval>N</refreshInterval></Link></NetworkLink>`
+- Always set `flyToView 0` (otherwise the camera jumps on every refresh) and `refreshVisibility 0` (otherwise the user's checkbox choices are reset on refresh).
+- Live data: `onInterval`, >= 5 s (also enforce server side with `NetworkLinkControl/minRefreshPeriod`), or `onRequest`.
+- Cache busting (N-15): every `/kml/*` response carries `Cache-Control: no-store` AND a `<NetworkLinkControl><cookie>rev=N</cookie></NetworkLinkControl>` (revision) before `<Document>`. Per the KML reference, `cookie` text is appended to the link's URL query on the next refresh, so each refresh URL is unique. Do not rely on only one of the two. (Reference semantics from memory of the KML docs; confirm the exact query shape in Google Earth Pro.)
+- Content type `application/vnd.google-earth.kml+xml` (or `...kmz`). NetworkLinkControl only works in the fetched KML, not in the master.
+- Live placemarks (current position, last-known point) carry NO `TimeStamp`/`TimeSpan`: with the time slider moved back, timed features vanish. Events of the server KML are also untimed (T0+offset in name/description).
+- `Kml/Dynamic` generators take `nowUtc` and the revision as parameters; no clock, no DB, no HTTP.
+- Assets over HTTP: the `Model` `Link href` and icons must be reachable from the document's base URL (e.g. `http://127.0.0.1:8080/assets/starship.dae`). RISK (unverified in this project): Google Earth Pro may fail to load a remote `.dae` or its relative textures from a NetworkLink. Fallback: serve a small KMZ (`doc.kml` + `files/`) from the endpoint, or keep the model in the locally opened master KMZ. Test manually and record in `docs/ge-ellenorzes.md`.
+- Server is loopback only; Google Earth Pro runs on the same machine.
 
 ## Testing
 - XML validity: parse with `XDocument.Parse`; optional XSD validation (OGC KML 2.2 + gx schema) if added to the repo.

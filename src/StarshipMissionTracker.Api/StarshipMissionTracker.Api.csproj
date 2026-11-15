@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <PackageReference Include="Serilog.AspNetCore" />
+    <PackageReference Include="Serilog.Sinks.Console" />
+    <PackageReference Include="Serilog.Sinks.File" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\StarshipMissionTracker.Core\StarshipMissionTracker.Core.csproj" />
+    <ProjectReference Include="..\StarshipMissionTracker.Trajectory\StarshipMissionTracker.Trajectory.csproj" />
+    <ProjectReference Include="..\StarshipMissionTracker.Kml\StarshipMissionTracker.Kml.csproj" />
+    <ProjectReference Include="..\StarshipMissionTracker.Data\StarshipMissionTracker.Data.csproj" />
+    <ProjectReference Include="..\StarshipMissionTracker.Telemetry\StarshipMissionTracker.Telemetry.csproj" />
+  </ItemGroup>
+</Project>

@@ -5,6 +5,7 @@ ai/
 output/
 logs/
 *.db
+data/*.db*
 
 # .NET build artefacts
 bin/

@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\StarshipMissionTracker.Core\StarshipMissionTracker.Core.csproj" />
+    <ProjectReference Include="..\StarshipMissionTracker.Trajectory\StarshipMissionTracker.Trajectory.csproj" />
+  </ItemGroup>
+</Project>

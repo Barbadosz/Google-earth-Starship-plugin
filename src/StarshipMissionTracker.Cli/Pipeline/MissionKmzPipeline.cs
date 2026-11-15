@@ -27,7 +27,7 @@ public sealed class MissionKmzPipeline
 
     private readonly ILogger _logger;
     private readonly IMissionLoader _loader;
-    private readonly ITrajectoryProcessor _processor;
+    private readonly FlightPathPreparer _preparer;
     private readonly IKmzPackager _packager;
     private readonly TrajectoryDensificationOptions _densification;
 
@@ -40,9 +40,9 @@ public sealed class MissionKmzPipeline
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _loader = loader ?? new MissionFileLoader();
-        _processor = processor ?? new TrajectoryProcessor();
         _packager = packager ?? new KmzPackager();
         _densification = densification ?? TrajectoryDensificationOptions.Default;
+        _preparer = new FlightPathPreparer(processor, _densification);
     }
 
     /// <summary>Runs the whole pipeline and writes <c>&lt;output&gt;/&lt;code&gt;.kmz</c> (replaced atomically).</summary>
@@ -159,16 +159,11 @@ public sealed class MissionKmzPipeline
 
     private FlightPath PreparePath(Vehicle vehicle, FlightPath path, HashSet<FlightPath> insertedSet)
     {
-        var densified = _processor.Densify(path.Points, _densification);
-        var oriented = OrientationCalculator.FillMissing(densified);
-
-        // Core rule: a path may not claim better quality than its worst point (inserted/derived points are Estimated).
-        var quality = oriented.Select(p => p.Quality).Aggregate(path.Quality, DataQualityExtensions.Worst);
+        var prepared = _preparer.Prepare(path);
         _logger.Information(
             "{Vehicle} {TrajectoryType} path: {SourcePoints} -> {Points} points after densification, quality {SourceQuality} -> {Quality}",
-            vehicle.Name, path.Type, path.Points.Count, oriented.Count, path.Quality, quality);
-        var prepared = new FlightPath(path.Type, quality, path.SourceName, path.License, oriented);
-        if (oriented.Count > path.Points.Count)
+            vehicle.Name, path.Type, path.Points.Count, prepared.Points.Count, path.Quality, prepared.Quality);
+        if (prepared.Points.Count > path.Points.Count)
         {
             insertedSet.Add(prepared);
         }

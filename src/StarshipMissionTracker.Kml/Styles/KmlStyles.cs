@@ -68,6 +68,31 @@ public static class KmlStyles
         EventStyle(),
     ];
 
+    /// <summary>
+    /// Same styles as <see cref="CreateAll()"/>, but the vehicle icons point to
+    /// <c>{iconBaseHref}/starship.png</c> and <c>{iconBaseHref}/booster.png</c> (server mode: icons served over HTTP).
+    /// </summary>
+    public static IReadOnlyList<XElement> CreateAll(string iconBaseHref)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(iconBaseHref);
+        var baseHref = iconBaseHref.TrimEnd('/');
+        var styles = CreateAll().ToList();
+        for (var i = 0; i < styles.Count; i++)
+        {
+            var id = styles[i].Attribute("id")!.Value;
+            if (id == KmlLod.StyleId.IconStarship)
+            {
+                styles[i] = IconStyle(id, $"{baseHref}/{Path.GetFileName(StarshipIconHref)}");
+            }
+            else if (id == KmlLod.StyleId.IconSuperHeavy)
+            {
+                styles[i] = IconStyle(id, $"{baseHref}/{Path.GetFileName(SuperHeavyIconHref)}");
+            }
+        }
+
+        return styles;
+    }
+
     /// <summary>The colour of the path style with the given ID (for tests and legends).</summary>
     public static string PathColor(string styleId) => styleId switch
     {

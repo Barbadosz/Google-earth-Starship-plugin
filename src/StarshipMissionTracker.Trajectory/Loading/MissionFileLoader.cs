@@ -54,6 +54,15 @@ public sealed partial class MissionFileLoader : IMissionLoader
         try
         {
             var config = BuildConfig(dto, missionFile, launchTimeOverrideUtc is not null);
+
+            // The file name is the requested mission code (<data>/missions/<code>.json); ordinal exact match, like the code pattern.
+            var requestedCode = Path.GetFileNameWithoutExtension(missionConfigPath);
+            if (!string.Equals(config.MissionCode, requestedCode, StringComparison.Ordinal))
+            {
+                throw new MissionDataException(
+                    $"{missionFile}: field 'missionCode' value '{config.MissionCode}' does not match the requested mission code '{requestedCode}'.");
+            }
+
             var vehicles = new List<Vehicle>();
             foreach (var v in dto.Vehicles ?? [])
             {

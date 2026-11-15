@@ -86,9 +86,24 @@ public sealed class MissionFileLoaderValidationTests : IDisposable
         File.Move(Path.Combine(_temp, "demo-ift-starship-planned.json"), Path.Combine(_temp, "Demo_1-x-starship-planned.json"));
         File.Move(Path.Combine(_temp, "demo-ift-superheavy-planned.json"), Path.Combine(_temp, "Demo_1-x-superheavy-planned.json"));
 
-        var loaded = await Load(mission, null);
+        var renamed = Path.Combine(_temp, "Demo_1-x.json");
+        File.Move(mission, renamed); // the file name is the requested mission code and must equal the missionCode field
+
+        var loaded = await Load(renamed, null);
 
         Assert.Equal("Demo_1-x", loaded.MissionCode);
+    }
+
+    [Fact]
+    public async Task MissionCodeDifferingFromFileName_Rejected_NamingBothCodesAndFile()
+    {
+        var mission = CopyDemo("demo-ift.json", "\"missionCode\": \"demo-ift\"", "\"missionCode\": \"other\"");
+
+        var ex = await Assert.ThrowsAsync<MissionDataException>(() => Load(mission, null));
+
+        Assert.Contains("'other'", ex.Message);
+        Assert.Contains("'demo-ift'", ex.Message);
+        Assert.Contains("demo-ift.json", ex.Message);
     }
 
     [Fact]

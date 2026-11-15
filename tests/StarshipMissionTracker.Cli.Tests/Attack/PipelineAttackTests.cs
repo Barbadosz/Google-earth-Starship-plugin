@@ -166,7 +166,7 @@ public sealed class PipelineAttackTests : IDisposable
         Assert.True(sw.Elapsed < TimeSpan.FromSeconds(60), $"took {sw.Elapsed}");
     }
 
-    [Fact(Skip = "ATTACK-3 - densification cap ArgumentException escapes the pipeline")]
+    [Fact]
     public async Task TooManyDensifiedPoints_ReportedAsMissionDataException_NotUnexpected()
     {
         // 63 years between two points: 200 million 10-second pieces, over the 1 000 000 point safety cap.
@@ -176,7 +176,7 @@ public sealed class PipelineAttackTests : IDisposable
 
     // ---------------------------------------------------------------- time handling
 
-    [Fact(Skip = "ATTACK-5 - sub-millisecond offsets give duplicate gx:Track when values")]
+    [Fact]
     public async Task SubMillisecondOffsets_DoNotProduceDuplicateWhenValues()
     {
         _ws.WriteMission(AttackWorkspace.Point(0, 25, -97, 0) + "," + AttackWorkspace.Point(0.0004, 25, -97, 1)
@@ -186,7 +186,7 @@ public sealed class PipelineAttackTests : IDisposable
         Assert.Equal(whens.Count, whens.Distinct().Count());
     }
 
-    [Fact(Skip = "ATTACK-4 - T0 fraction truncated when all offsets are whole seconds")]
+    [Fact]
     public async Task FractionalLaunchTime_IsNotLostForWholeSecondOffsets()
     {
         _ws.WriteMission(AttackWorkspace.DefaultPoints());
@@ -195,7 +195,7 @@ public sealed class PipelineAttackTests : IDisposable
         Assert.Equal("2026-12-01T14:00:00.500Z", first);
     }
 
-    [Fact(Skip = "ATTACK-2 - huge event offset escapes as ArgumentOutOfRangeException")]
+    [Fact]
     public async Task EventHugeOffset_IsMissionDataException()
     {
         _ws.WriteMission(
@@ -204,7 +204,7 @@ public sealed class PipelineAttackTests : IDisposable
         await Assert.ThrowsAsync<MissionDataException>(() => _ws.BuildAsync());
     }
 
-    [Fact(Skip = "ATTACK-2 - date range overflow escapes as ArgumentOutOfRangeException")]
+    [Fact]
     public async Task LaunchTimeAtEndOfCalendar_IsMissionDataException()
     {
         _ws.WriteMission(AttackWorkspace.DefaultPoints());
@@ -212,7 +212,7 @@ public sealed class PipelineAttackTests : IDisposable
             () => _ws.BuildAsync(new DateTimeOffset(9999, 12, 31, 23, 59, 55, TimeSpan.Zero)));
     }
 
-    [Fact(Skip = "ATTACK-2 - date range overflow escapes as ArgumentOutOfRangeException")]
+    [Fact]
     public async Task LaunchTimeAtStartOfCalendar_WithNegativeOffsets_IsMissionDataException()
     {
         _ws.WriteMission(AttackWorkspace.Point(-5, 25, -97, 0) + "," + AttackWorkspace.Point(5, 25, -97.0001, 0));
@@ -616,7 +616,7 @@ public sealed class PipelineAttackTests : IDisposable
             "mission description says 'Planned / Reconstructed – not live telemetry' right before 'Data quality: Measured'");
     }
 
-    [Fact(Skip = "ATTACK-6 - duplicate JSON keys: last value wins silently")]
+    [Fact]
     public async Task DuplicateJsonKey_IsNotSilentlyAccepted()
     {
         // "lat" twice: System.Text.Json keeps the last value without a word unless duplicates are disallowed.
@@ -624,5 +624,6 @@ public sealed class PipelineAttackTests : IDisposable
             "{ \"t\": 0, \"lat\": 25.9, \"lat\": 26.1, \"lon\": -97, \"altM\": 5 }");
         var ex = await Record.ExceptionAsync(() => _ws.BuildAsync());
         Assert.IsType<MissionDataException>(ex);
+        Assert.Contains("lat", ex.Message, StringComparison.Ordinal);
     }
 }

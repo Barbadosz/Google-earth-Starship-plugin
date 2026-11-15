@@ -1,3 +1,4 @@
+using StarshipMissionTracker.Core.Exceptions;
 using StarshipMissionTracker.Core.Interfaces;
 using StarshipMissionTracker.Core.Models;
 using StarshipMissionTracker.Trajectory.Interpolation;
@@ -19,7 +20,8 @@ public sealed class TrajectoryProcessor : ITrajectoryProcessor
     public const int MaxOutputPoints = 1_000_000;
 
     /// <inheritdoc />
-    /// <exception cref="ArgumentException">Null element, offsets not strictly increasing, or output over the cap.</exception>
+    /// <exception cref="ArgumentException">Null element or offsets not strictly increasing.</exception>
+    /// <exception cref="MissionDataException">Output over the cap (absurd input data or spacing limits).</exception>
     public IReadOnlyList<TrajectoryPoint> Densify(IReadOnlyList<TrajectoryPoint> points, TrajectoryDensificationOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -41,10 +43,10 @@ public sealed class TrajectoryProcessor : ITrajectoryProcessor
 
             if (result.Count + pieces > MaxOutputPoints)
             {
-                throw new ArgumentException(
-                    $"Densification would exceed {MaxOutputPoints} points (segment {i - 1}->{i}: " +
-                    $"{segment.DistanceMeters:F0} m, {duration} s); the spacing limits are too small.",
-                    nameof(options));
+                throw new MissionDataException(
+                    $"Densification would exceed the output cap MaxOutputPoints = {MaxOutputPoints} points " +
+                    $"(segment {i - 1}->{i}: {segment.DistanceMeters:F0} m / MaxSpacingMeters {options.MaxSpacingMeters}, " +
+                    $"{duration} s / MaxSpacingSeconds {options.MaxSpacingSeconds}); the trajectory has too long a gap or the spacing limits are too small.");
             }
 
             for (var k = 1; k < pieces; k++)

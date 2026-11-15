@@ -290,7 +290,7 @@ public sealed class CliAttackTests : IDisposable
         Assert.True(File.Exists(Path.Combine(_ws.Output, "atk.kmz")), err);
     }
 
-    [Fact(Skip = "ATTACK-2 - date range overflow is logged as fatal Unexpected error")]
+    [Fact]
     public async Task Process_HostileDataEndOfCalendar_Exit1_NotReportedAsUnexpected()
     {
         _ws.WriteMission(AttackWorkspace.DefaultPoints());

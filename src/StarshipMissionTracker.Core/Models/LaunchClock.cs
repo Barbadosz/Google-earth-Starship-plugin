@@ -1,4 +1,5 @@
 using System.Globalization;
+using StarshipMissionTracker.Core.Exceptions;
 
 namespace StarshipMissionTracker.Core.Models;
 
@@ -10,6 +11,7 @@ public sealed class LaunchClock
 {
     public const string SecondsFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'";
     public const string MillisecondsFormat = "yyyy-MM-dd'T'HH:mm:ss.fff'Z'";
+    public const string TicksFormat = "yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'";
 
     public LaunchClock(DateTimeOffset launchTimeUtc)
     {
@@ -80,7 +82,7 @@ public sealed class LaunchClock
         var ticks = Math.Round(offsetSeconds * TimeSpan.TicksPerSecond);
         if (Math.Abs(ticks) >= long.MaxValue)
         {
-            throw new ArgumentOutOfRangeException(nameof(offsetSeconds), offsetSeconds, "Offset is too large to represent as a time span.");
+            throw new MissionDataException($"Offset {offsetSeconds} s is too large to represent as a time span.");
         }
 
         try
@@ -89,12 +91,24 @@ public sealed class LaunchClock
         }
         catch (ArgumentOutOfRangeException ex)
         {
-            throw new ArgumentOutOfRangeException(
+            throw new MissionDataException(
                 $"T0 {LaunchTimeUtc:O} + offset {offsetSeconds} s is outside the supported date range.", ex);
         }
     }
 
-    /// <summary>KML time text: yyyy-MM-ddTHH:mm:ssZ (milliseconds optional: ...ss.fffZ). Invariant culture. The offset is first rounded to the nearest tick (100 ns), then the output is truncated (not rounded) to seconds/milliseconds.</summary>
+    /// <summary>
+    /// KML time text: yyyy-MM-ddTHH:mm:ssZ (milliseconds optional: ...ss.fffZ). Invariant culture. The offset is first
+    /// rounded to the nearest tick (100 ns), then the output is truncated (not rounded) to seconds/milliseconds.
+    /// A T0 with a fractional second always gets milliseconds; its sub-millisecond part is truncated like any other
+    /// (use <see cref="FormatExact"/> to keep it).
+    /// </summary>
     public string Format(double offsetSeconds, bool includeMilliseconds = false) =>
-        ToUtc(offsetSeconds).ToString(includeMilliseconds ? MillisecondsFormat : SecondsFormat, CultureInfo.InvariantCulture);
+        ToUtc(offsetSeconds).ToString(
+            includeMilliseconds || HasFractionalSecond ? MillisecondsFormat : SecondsFormat, CultureInfo.InvariantCulture);
+
+    /// <summary>Exact tick precision (7 fraction digits); for when millisecond text would repeat a timestamp.</summary>
+    public string FormatExact(double offsetSeconds) =>
+        ToUtc(offsetSeconds).ToString(TicksFormat, CultureInfo.InvariantCulture);
+
+    private bool HasFractionalSecond => LaunchTimeUtc.Ticks % TimeSpan.TicksPerSecond != 0;
 }

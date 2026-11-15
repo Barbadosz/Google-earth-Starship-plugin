@@ -1,4 +1,5 @@
 using StarshipMissionTracker.Core.Enums;
+using StarshipMissionTracker.Core.Exceptions;
 using StarshipMissionTracker.Core.Models;
 using StarshipMissionTracker.Trajectory.Calculation;
 using static StarshipMissionTracker.Trajectory.Tests.TestPoints;
@@ -205,7 +206,7 @@ public class TrajectoryProcessorTests
     {
         TrajectoryPoint[] input = [At(0, 0, 0), At(1000, 0, 90)];
 
-        Assert.Throws<ArgumentException>(() => _processor.Densify(input, new TrajectoryDensificationOptions(0.001, 10)));
+        Assert.Throws<MissionDataException>(() => _processor.Densify(input, new TrajectoryDensificationOptions(0.001, 10)));
     }
 
     [Fact]
@@ -224,7 +225,10 @@ public class TrajectoryProcessorTests
     {
         TrajectoryPoint[] input = [At(0, 0, 0, 0), At(1_000_000, 0, 0, 1000)];
 
-        Assert.Throws<ArgumentException>(() => _processor.Densify(input, new TrajectoryDensificationOptions(10_000, 1)));
+        var ex = Assert.Throws<MissionDataException>(
+            () => _processor.Densify(input, new TrajectoryDensificationOptions(10_000, 1)));
+        Assert.Contains("MaxOutputPoints", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("MaxSpacingSeconds", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]

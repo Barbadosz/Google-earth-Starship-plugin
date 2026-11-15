@@ -61,7 +61,6 @@ public static class VehicleGenerator
         Vehicle vehicle, FlightPath path, LaunchClock clock, string name, string? styleId,
         XElement? model, Lod? lod)
     {
-        var ms = NeedsMilliseconds(path.Points.Select(p => p.OffsetSeconds));
         var placemark = K("Placemark",
             K("name", name),
             K("description", Cdata(
@@ -69,7 +68,7 @@ public static class VehicleGenerator
                 + $"<p>{Html(QualityNote(path.Quality))}<br/>Source: {Html(path.SourceName)}"
                 + (KmlPathInfo.HasAngles(path) ? $"<br/>{Html(KmlPathInfo.OrientationNote)}" : string.Empty)
                 + "</p>")),
-            GxTrackGenerator.Span(path, clock, ms));
+            GxTrackGenerator.Span(path, clock, vehicle.Name));
         if (styleId is not null)
         {
             placemark.Add(K("styleUrl", "#" + styleId));
@@ -82,7 +81,7 @@ public static class VehicleGenerator
 
         placemark.Add(
             KmlPathInfo.Extended(vehicle, path),
-            GxTrackGenerator.CreateTrack(path, clock, model));
+            GxTrackGenerator.CreateTrack(path, clock, model, vehicle.Name));
         return placemark;
     }
 

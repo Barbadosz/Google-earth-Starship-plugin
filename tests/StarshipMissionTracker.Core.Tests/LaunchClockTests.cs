@@ -1,3 +1,5 @@
+using System.Globalization;
+using StarshipMissionTracker.Core.Exceptions;
 using StarshipMissionTracker.Core.Models;
 
 namespace StarshipMissionTracker.Core.Tests;
@@ -72,12 +74,53 @@ public class LaunchClockTests
     }
 
     [Fact]
+    public void FormatExact_GivesSevenDigits_AndParsesBack()
+    {
+        var clock = new LaunchClock(T0);
+        var text = clock.FormatExact(1.0000001);
+        Assert.Equal("2026-12-01T23:30:01.0000001Z", text);
+        Assert.Equal(T0.AddTicks(10_000_001), LaunchClock.ParseUtc(text));
+    }
+
+    [Fact]
+    public void FormatExact_UsesInvariantCulture_UnderHungarian()
+    {
+        var old = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo("hu-HU");
+            var clock = new LaunchClock(T0);
+            Assert.Equal("2026-12-01T23:30:02.5000000Z", clock.FormatExact(2.5));
+            Assert.Equal("2026-12-01T23:30:02.500Z", clock.Format(2.5, includeMilliseconds: true));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = old;
+        }
+    }
+
+    [Fact]
+    public void Format_FractionalT0_GivesMilliseconds()
+    {
+        var clock = new LaunchClock(new DateTimeOffset(2026, 12, 1, 14, 0, 0, 500, TimeSpan.Zero));
+        Assert.Equal("2026-12-01T14:00:00.500Z", clock.Format(0));
+        Assert.Equal("2026-12-01T14:00:05.500Z", clock.Format(5));
+    }
+
+    [Fact]
+    public void Format_WholeSecondT0_IsUnchanged()
+    {
+        var clock = new LaunchClock(T0);
+        Assert.Equal("2026-12-01T23:30:05Z", clock.Format(5));
+    }
+
+    [Fact]
     public void ToUtc_HugeOffset_ThrowsClearError()
     {
         var clock = new LaunchClock(T0);
-        var ex = Assert.Throws<ArgumentOutOfRangeException>(() => clock.ToUtc(1e300));
+        var ex = Assert.Throws<MissionDataException>(() => clock.ToUtc(1e300));
         Assert.Contains("too large", ex.Message);
-        var ex2 = Assert.Throws<ArgumentOutOfRangeException>(() => clock.ToUtc(-1e11));
+        var ex2 = Assert.Throws<MissionDataException>(() => clock.ToUtc(-1e11));
         Assert.Contains("date range", ex2.Message);
         Assert.Throws<ArgumentOutOfRangeException>(() => clock.ToUtc(double.NegativeInfinity));
     }

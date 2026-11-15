@@ -24,6 +24,9 @@ public sealed partial class MissionFileLoader : IMissionLoader
 
         // A typo in a field name must fail loudly instead of silently dropping data.
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+
+        // A repeated key would silently keep the last value; reject it (the JsonException names the key).
+        AllowDuplicateProperties = false,
     };
 
     private static readonly string[] EventFields = ["offsetSeconds:t", "latitude:lat", "longitude:lon", "altitudeMeters:altM"];

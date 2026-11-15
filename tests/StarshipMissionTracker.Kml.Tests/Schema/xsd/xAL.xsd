@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Minimal local stand-in for the OASIS xAL 2.0 schema
+  (http://docs.oasis-open.org/election/external/xAL.xsd), which ogckml22.xsd imports for
+  kml:address details. Written for this repository's tests (not a copy of the OASIS file, to avoid
+  redistributing it). It declares only xal:AddressDetails, with any content. The KML we generate
+  never uses it, so validation of our output is unaffected.
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+  targetNamespace="urn:oasis:names:tc:ciq:xsdschema:xAL:2.0"
+  elementFormDefault="qualified">
+  <xs:element name="AddressDetails" type="xs:anyType"/>
+</xs:schema>

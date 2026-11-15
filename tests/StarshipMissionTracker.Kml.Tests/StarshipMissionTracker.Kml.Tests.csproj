@@ -9,5 +9,11 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\StarshipMissionTracker.Kml\StarshipMissionTracker.Kml.csproj" />
+    <!-- Schema validation of the real doc.kml needs the same load/prepare pipeline as the CLI. -->
+    <ProjectReference Include="..\..\src\StarshipMissionTracker.Cli\StarshipMissionTracker.Cli.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Offline XSD copies for KML validation (Schema/xsd/NOTICE.txt has the licence notes). -->
+    <Content Include="Schema\xsd\*" CopyToOutputDirectory="PreserveNewest" LinkBase="Schema\xsd" />
   </ItemGroup>
 </Project>

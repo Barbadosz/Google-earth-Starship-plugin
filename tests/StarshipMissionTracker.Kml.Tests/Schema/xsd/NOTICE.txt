@@ -1,0 +1,15 @@
+Schema files used only by the automated KML validation tests (offline copies, unmodified unless noted).
+
+ogckml22.xsd, atom-author-link.xsd, OGC-KML-ReadMe.txt
+  Source: https://schemas.opengis.net/kml/2.2.0/
+  Copyright (c) 2008 Open Geospatial Consortium. Terms: https://www.ogc.org/legal/ (OGC document/software notice).
+  Unmodified; the original headers are kept.
+
+kml22gx.xsd
+  Source: https://developers.google.com/kml/schema/kml22gx.xsd
+  Copyright 2010 Google, Inc. Site content licensed under CC BY 4.0
+  (https://creativecommons.org/licenses/by/4.0/); the same file is also shipped by libkml (BSD-3-Clause).
+  Unmodified; the original header is kept.
+
+xAL.xsd
+  Own minimal stand-in (see the file header); the real OASIS xAL.xsd is deliberately not bundled.

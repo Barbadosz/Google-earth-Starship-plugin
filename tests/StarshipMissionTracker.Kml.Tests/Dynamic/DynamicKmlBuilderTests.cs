@@ -301,6 +301,28 @@ public class DynamicKmlBuilderTests
         Assert.Contains("http://localhost:5000/assets/icons/booster.png", hrefs);
     }
 
+    // ---- N-54: style ids unique per dynamic document ----
+
+    [Fact]
+    public void HistoryAndLive_StyleIds_AreScopedTrimmedAndResolveInOwnDocument()
+    {
+        var history = Parse(History(new[] { Starship(Path(TrajectoryType.Actual, 4)) }));
+        var planned = Parse(Planned());
+
+        foreach (var (doc, prefix) in new[] { (history, DynamicKmlBuilder.HistoryStylePrefix) })
+        {
+            var ids = doc.Descendants(K + "Style").Select(s => s.Attribute("id")!.Value).ToList();
+            Assert.All(ids, id => Assert.StartsWith(prefix, id, StringComparison.Ordinal));
+            var refs = doc.Descendants(K + "styleUrl").Select(u => u.Value[1..]).ToHashSet();
+            Assert.All(refs, r => Assert.Contains(r, ids));
+            Assert.Equal(refs.Count, ids.Count);
+        }
+
+        var plannedIds = planned.Descendants(K + "Style").Select(s => s.Attribute("id")!.Value).ToHashSet();
+        var historyIds = history.Descendants(K + "Style").Select(s => s.Attribute("id")!.Value);
+        Assert.All(historyIds, id => Assert.DoesNotContain(id, plannedIds));
+    }
+
     // ---- history ----
 
     [Fact]
@@ -316,7 +338,7 @@ public class DynamicKmlBuilderTests
 
         Assert.Equal(2, doc.Descendants(K + "LineString").Count());
         AssertNone(doc.Descendants().Where(e => e.Name.LocalName is "TimeStamp" or "TimeSpan" or "Track"));
-        Assert.All(doc.Descendants(K + "Placemark"), p => Assert.StartsWith("#estimated-", p.Element(K + "styleUrl")!.Value, StringComparison.Ordinal));
+        Assert.All(doc.Descendants(K + "Placemark"), p => Assert.StartsWith("#history-estimated-",p.Element(K + "styleUrl")!.Value, StringComparison.Ordinal));
         Assert.Contains("Actual path, estimated", doc.ToString(), StringComparison.Ordinal);
         Assert.Contains("SIMULATED", doc.ToString(), StringComparison.Ordinal);
     }
@@ -451,7 +473,7 @@ public class DynamicKmlBuilderTests
         var doc = Parse(LiveDoc([Live(Starship(Path(TrajectoryType.Planned, 2, DataQuality.Published)), null, ageSeconds: null)]));
 
         var icon = doc.Descendants(K + "Placemark").Single(p => p.Element(K + "styleUrl") is not null);
-        Assert.Equal("#icon-starship", icon.Element(K + "styleUrl")!.Value);
+        Assert.Equal("#live-icon-starship", icon.Element(K + "styleUrl")!.Value);
         var text = doc.ToString();
         Assert.Contains("Planned (countdown pad position)", text, StringComparison.Ordinal);
         Assert.DoesNotContain("Published", text, StringComparison.Ordinal);

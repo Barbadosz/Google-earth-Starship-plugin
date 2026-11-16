@@ -111,8 +111,8 @@ public sealed class DynamicKmlBuilder : IDynamicKmlBuilder
         var document = K("Document",
             K("name", $"Actual trajectory – {info.Name}"),
             K("description", Cdata(SimulatedHtml(info, "Actual path as recorded so far; estimated data is not measured telemetry."))),
-            KmlStyles.CreateAll(assets.IconBaseUrl),
             actual);
+        ScopeStyles(document, HistoryStylePrefix, assets);
         return Serialize(Root(control, document));
     }
 
@@ -133,9 +133,53 @@ public sealed class DynamicKmlBuilder : IDynamicKmlBuilder
         var document = K("Document",
             K("name", $"Vehicles – {info.Name}"),
             K("description", Cdata(SimulatedHtml(info, $"Generated at {Utc(nowUtc)} UTC."))),
-            KmlStyles.CreateAll(assets.IconBaseUrl),
             LiveVehicleGenerator.CreateFolder(info, vehicles, assets));
+        ScopeStyles(document, LiveStylePrefix, assets);
         return Serialize(Root(control, document));
+    }
+
+    /// <summary>Style id prefix of the history document (N-54: ids unique per document, so a reload never re-resolves the planned styles).</summary>
+    public const string HistoryStylePrefix = "history-";
+
+    /// <summary>Style id prefix of the live document (N-54).</summary>
+    public const string LiveStylePrefix = "live-";
+
+    /// <summary>
+    /// N-54: adds to <paramref name="document"/> only the styles its features reference, with ids prefixed by
+    /// <paramref name="prefix"/>, and rewrites the features' <c>styleUrl</c>s to match. Colours and icons are unchanged.
+    /// </summary>
+    private static void ScopeStyles(XElement document, string prefix, KmlAssetUrls assets)
+    {
+        var styleUrls = document.Descendants(KmlXml.Kml + "styleUrl")
+            .Where(u => u.Value.StartsWith('#'))
+            .ToList();
+        var used = styleUrls.Select(u => u.Value[1..]).ToHashSet(StringComparer.Ordinal);
+        var styles = KmlStyles.CreateAll(assets.IconBaseUrl).Where(s => used.Contains(s.Attribute("id")!.Value)).ToList();
+        foreach (var style in styles)
+        {
+            var id = style.Attribute("id")!;
+            id.Value = prefix + id.Value;
+        }
+
+        var known = styles.Select(s => s.Attribute("id")!.Value).ToHashSet(StringComparer.Ordinal);
+        foreach (var url in styleUrls)
+        {
+            if (known.Contains(prefix + url.Value[1..]))
+            {
+                url.Value = "#" + prefix + url.Value[1..];
+            }
+        }
+
+        // Styles go right after the description (same position as before), before the feature folders.
+        var anchor = document.Element(KmlXml.Kml + "description");
+        if (anchor is not null)
+        {
+            anchor.AddAfterSelf(styles);
+        }
+        else
+        {
+            document.AddFirst(styles);
+        }
     }
 
     /// <summary>

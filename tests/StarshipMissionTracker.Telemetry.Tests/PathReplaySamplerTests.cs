@@ -26,7 +26,7 @@ public class PathReplaySamplerTests
         {
             Assert.Equal(DataQuality.Simulated, s.Quality);
             Assert.True(s.IsEstimated);
-            Assert.StartsWith("Internal simulator (replay of test-plan)", s.SourceName);
+            Assert.Equal("Internal simulator", s.SourceName);
         });
 
         var ship10 = samples.Single(s => s.Vehicle == VehicleType.Starship && s.TimestampUtc == TestData.Start.AddSeconds(10));

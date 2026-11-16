@@ -12,7 +12,11 @@ namespace StarshipMissionTracker.Telemetry.Simulation;
 /// </summary>
 public sealed class PathReplaySampler
 {
-    public const string SourcePrefix = "Internal simulator";
+    /// <summary>
+    /// Full source name of every simulated sample (<see cref="SimulatorSource.Name"/>, the same constant the Data module uses): the telemetry
+    /// repository auto-creates only that source and rejects any other unregistered name (provenance rule).
+    /// </summary>
+    public const string SourceName = SimulatorSource.Name;
 
     /// <summary>Tolerance (mission seconds) for deciding that a grid offset coincides with the last planned point.</summary>
     private const double Epsilon = 1e-9;
@@ -43,7 +47,7 @@ public sealed class PathReplaySampler
             }
 
             var source = path.Points;
-            _tracks.Add(new Track(vehicle.Type, source, OrientationCalculator.FillMissing(source), $"{SourcePrefix} (replay of {path.SourceName})"));
+            _tracks.Add(new Track(vehicle.Type, source, OrientationCalculator.FillMissing(source), SourceName));
         }
 
         _next = _tracks.Select(t => (long)Math.Ceiling(t.Source[0].OffsetSeconds / intervalSeconds - Epsilon)).ToArray();

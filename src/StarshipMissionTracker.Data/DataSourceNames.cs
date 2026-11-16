@@ -4,5 +4,5 @@ namespace StarshipMissionTracker.Data;
 public static class DataSourceNames
 {
     public const string PlannedTrajectoryFile = "Planned trajectory file";
-    public const string InternalSimulator = "Internal simulator";
+    public const string InternalSimulator = Core.Models.SimulatorSource.Name;
 }

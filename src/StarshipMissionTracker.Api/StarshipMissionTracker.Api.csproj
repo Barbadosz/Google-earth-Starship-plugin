@@ -5,6 +5,9 @@
     <PackageReference Include="Serilog.Sinks.File" />
   </ItemGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="StarshipMissionTracker.Api.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\StarshipMissionTracker.Core\StarshipMissionTracker.Core.csproj" />
     <ProjectReference Include="..\StarshipMissionTracker.Trajectory\StarshipMissionTracker.Trajectory.csproj" />
     <ProjectReference Include="..\StarshipMissionTracker.Kml\StarshipMissionTracker.Kml.csproj" />

@@ -13,7 +13,7 @@ public class TelemetryValidatorTests
     private static TelemetrySample Sample(
         DateTimeOffset? ts = null,
         DataQuality quality = DataQuality.Simulated,
-        string source = PathReplaySampler.SourcePrefix + " (replay of x)",
+        string source = PathReplaySampler.SourceName,
         double? lat = 25,
         double? lon = -97,
         double? alt = 100) =>

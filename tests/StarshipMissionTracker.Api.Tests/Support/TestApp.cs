@@ -51,6 +51,9 @@ public sealed class TestApp : IAsyncDisposable
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Testing" });
         builder.WebHost.UseTestServer();
         builder.Logging.ClearProviders();
+        // The Api's appsettings.json (copied next to the tests) sets AllowedHosts; the framework host filter would answer
+        // 400 before the endpoint-level Host check these tests exercise. The real host is covered in Wiring/.
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["AllowedHosts"] = "*" });
         builder.Configuration.AddInMemoryCollection(configuration ?? new Dictionary<string, string?>());
 
         var missions = new FakeMissionRepository();

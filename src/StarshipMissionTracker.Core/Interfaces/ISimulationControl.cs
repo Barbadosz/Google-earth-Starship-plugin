@@ -28,6 +28,8 @@ public interface ISimulationControl
     /// Runs <paramref name="action"/> serialised with every other simulation operation (start, stop, ticks), but only
     /// while no run of <paramref name="missionCode"/> is active (Countdown or Running, paused included). Used for
     /// changes that must not race with a start, e.g. the planned T0 edit. The action gets <paramref name="cancellationToken"/>.
+    /// The lock is not reentrant: <paramref name="action"/> must not call back into <see cref="ISimulationControl"/>
+    /// (start, stop, speed, pause, resume or this method), or it deadlocks. Keep it to repository work.
     /// </summary>
     /// <exception cref="SimulationStateException">A run of that mission is active; the action is not called.</exception>
     Task<T> RunWhileInactiveAsync<T>(string missionCode, Func<CancellationToken, Task<T>> action, CancellationToken cancellationToken = default);

@@ -8,7 +8,7 @@ public static class TestData
 {
     public const string Code = "demo-ift";
     public const string Source = "Test planned file";
-    public const string SimSource = "Internal simulator (replay of Test planned file)";
+    public const string SimSource = "Internal simulator";
 
     public static readonly DateTimeOffset PlannedT0 = new(2026, 12, 1, 23, 30, 0, TimeSpan.Zero);
     public static readonly DateTimeOffset Updated = new(2026, 11, 15, 10, 0, 0, TimeSpan.Zero);

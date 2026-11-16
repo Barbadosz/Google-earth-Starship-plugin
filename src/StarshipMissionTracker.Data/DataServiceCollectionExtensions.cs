@@ -16,7 +16,17 @@ public static class DataServiceCollectionExtensions
     public static IServiceCollection AddStarshipData(this IServiceCollection services, string connectionString)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
-        services.AddDbContextFactory<StarshipDbContext>(options => options.UseSqlite(connectionString));
+        return services.AddStarshipData(_ => connectionString);
+    }
+
+    /// <summary>
+    /// As <see cref="AddStarshipData(IServiceCollection, string)"/>, but the connection string is resolved from the built
+    /// service provider (so it can come from configuration that is final only after the host is built, e.g. in tests).
+    /// </summary>
+    public static IServiceCollection AddStarshipData(this IServiceCollection services, Func<IServiceProvider, string> connectionString)
+    {
+        ArgumentNullException.ThrowIfNull(connectionString);
+        services.AddDbContextFactory<StarshipDbContext>((provider, options) => options.UseSqlite(connectionString(provider)));
         services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<IMissionRepository, MissionRepository>();
         services.AddSingleton<ITelemetryRepository, TelemetryRepository>();

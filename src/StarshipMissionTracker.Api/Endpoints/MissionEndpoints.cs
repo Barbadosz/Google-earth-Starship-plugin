@@ -137,9 +137,16 @@ public static class MissionEndpoints
         }
 
         var (text, reason) = JsonBody.TryGetString(body, "launchTimeUtc", required: true);
-        if (reason is null && !LaunchClock.TryParseUtc(text, out _))
+        if (reason is null)
         {
-            reason = "'launchTimeUtc' must be an ISO 8601 UTC time ending with Z, e.g. 2026-12-01T23:30:00Z.";
+            if (!LaunchClock.TryParseUtc(text, out var parsedT0))
+            {
+                reason = "'launchTimeUtc' must be an ISO 8601 UTC time ending with Z, e.g. 2026-12-01T23:30:00Z.";
+            }
+            else if (!InputRules.IsLaunchTimeInRange(parsedT0))
+            {
+                reason = InputRules.LaunchTimeRangeRule;
+            }
         }
 
         if (reason is not null)

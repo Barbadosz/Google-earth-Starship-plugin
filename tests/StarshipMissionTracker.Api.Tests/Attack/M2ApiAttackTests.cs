@@ -319,7 +319,7 @@ public class M2ApiAttackTests
     }
 
     [Theory]
-    [InlineData("9999-12-31T23:59:59Z", Skip = "M2-ATTACK-2: T0 near year 9999 is accepted, then trajectory/events/planned KML throw (500)")]
+    [InlineData("9999-12-31T23:59:59Z")]
     [InlineData("0001-01-01T00:00:00Z")]
     [InlineData("0001-01-01T00:00:01Z")]
     [InlineData("9999-12-31T00:00:00Z")]
@@ -357,6 +357,26 @@ public class M2ApiAttackTests
         }
 
         Assert.True(broken.Count == 0, $"T0 {t0} accepted by PUT but: {string.Join("; ", broken)}");
+    }
+
+    [Theory]
+    [InlineData("2000-01-01T00:00:00Z", 200)]
+    [InlineData("1999-12-31T23:59:59Z", 400)]
+    [InlineData("2199-12-31T23:59:59Z", 200)]
+    [InlineData("2200-01-01T00:00:00Z", 400)]
+    public async Task PutLaunchTime_RangeBoundary(string t0, int expected)
+    {
+        await using var host = AttackHost.Start();
+        using var put = await host.PutT0Async($"{{\"launchTimeUtc\":\"{t0}\"}}");
+        Assert.Equal(expected, (int)put.StatusCode);
+        if (expected == 200)
+        {
+            foreach (var path in new[] { "/api/missions/demo-ift/trajectory", "/api/missions/demo-ift/events", "/kml/planned?mission=demo-ift" })
+            {
+                using var response = await host.Client.GetAsync(path, AttackHost.Ct);
+                Assert.True((int)response.StatusCode < 500, $"GET {path} -> {(int)response.StatusCode} for T0 {t0}");
+            }
+        }
     }
 
     [Theory]

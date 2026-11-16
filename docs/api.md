@@ -119,7 +119,8 @@ A bad value gives `400`. Sample fields: `vehicle`, `timestampUtc`, `offsetSecond
 samples are never presented as measured), `source`.
 
 **Change the planned T0:** `PUT /api/missions/{code}/launch-time` with `{"launchTimeUtc":"2026-12-01T23:30:00Z"}`
-(strict UTC format ending in `Z`). Answers `409` while a run of that mission is in Countdown or Running (paused
+(strict UTC format ending in `Z`; must be in 2000-01-01T00:00:00Z inclusive .. 2200-01-01T00:00:00Z exclusive, otherwise
+`400`). Answers `409` while a run of that mission is in Countdown or Running (paused
 included); a Completed run or a run of another mission does not block it. On success, in one database transaction, the
 planned T0 is set and the simulation anchor, the actual launch time and the simulated samples of the mission are reset.
 The check and the write run under the simulation's operation lock, so a concurrent Start cannot slip in between.

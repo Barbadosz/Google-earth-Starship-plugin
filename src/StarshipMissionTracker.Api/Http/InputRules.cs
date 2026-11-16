@@ -13,6 +13,19 @@ public static partial class InputRules
 
     public const double DefaultCountdownSeconds = 10;
 
+    /// <summary>
+    /// Accepted planned T0 range (UTC, inclusive start, exclusive end): years 2000..2199. Far inside DateTime's
+    /// 0001..9999, so T0 + any event/trajectory offset (hours..days) never overflows.
+    /// </summary>
+    public static readonly DateTimeOffset MinLaunchTimeUtc = new(2000, 1, 1, 0, 0, 0, TimeSpan.Zero);
+
+    /// <inheritdoc cref="MinLaunchTimeUtc"/>
+    public static readonly DateTimeOffset MaxLaunchTimeUtcExclusive = new(2200, 1, 1, 0, 0, 0, TimeSpan.Zero);
+
+    public static bool IsLaunchTimeInRange(DateTimeOffset t) => t >= MinLaunchTimeUtc && t < MaxLaunchTimeUtcExclusive;
+
+    public static string LaunchTimeRangeRule => "'launchTimeUtc' must be between 2000-01-01T00:00:00Z (inclusive) and 2200-01-01T00:00:00Z (exclusive).";
+
     /// <summary>True for <c>[A-Za-z0-9._-]{1,64}</c>.</summary>
     public static bool IsValidMissionCode(string? code) => code is not null && MissionCodeRegex().IsMatch(code);
 

@@ -12,48 +12,13 @@ public static class EventGenerator
     {
         ArgumentNullException.ThrowIfNull(events);
         ArgumentNullException.ThrowIfNull(clock);
-        return K("Folder",
-            K("name", KmlLod.FolderName.MissionEvents),
-            events.OrderBy(e => e.OffsetSeconds).Select(e => CreatePlacemark(e, clock)));
+        return EventPlacemarkBuilder.CreateFolder(events, clock, EventPlacemarkOptions.Kmz);
     }
 
     public static XElement CreatePlacemark(MissionEvent mission, LaunchClock clock)
     {
         ArgumentNullException.ThrowIfNull(mission);
         ArgumentNullException.ThrowIfNull(clock);
-        var ms = NeedsMilliseconds([mission.OffsetSeconds]);
-
-        var html = $"<p><b>{Html(TLabel(mission.OffsetSeconds))}</b> {Html(mission.Name)}</p>"
-                   + (string.IsNullOrWhiteSpace(mission.Description) ? string.Empty : $"<p>{Html(mission.Description)}</p>")
-                   + $"<p>{Html(QualityNote(mission.Quality))}<br/>Source: {Html(mission.SourceName)}</p>";
-
-        var data = new List<(string, string)>
-        {
-            ("EventType", mission.Type.ToString()),
-            ("OffsetSeconds", Number(mission.OffsetSeconds)),
-            ("DataQuality", mission.Quality.ToString()),
-            ("Source", mission.SourceName),
-        };
-        if (mission.Vehicle is { } vehicle)
-        {
-            data.Add(("Vehicle", vehicle.ToString()));
-        }
-
-        var placemark = K("Placemark",
-            K("name", mission.Name),
-            K("description", Cdata(html)),
-            K("TimeStamp", K("when", clock.Format(mission.OffsetSeconds, ms))),
-            K("styleUrl", "#" + KmlLod.StyleId.Event),
-            ExtendedData(data.ToArray()));
-
-        if (mission is { Latitude: { } lat, Longitude: { } lon })
-        {
-            // No altitude known: clamp to ground instead of inventing 0 m above sea level.
-            placemark.Add(K("Point",
-                K("altitudeMode", mission.AltitudeMeters.HasValue ? "absolute" : "clampToGround"),
-                K("coordinates", Coordinates(lat, lon, mission.AltitudeMeters))));
-        }
-
-        return placemark;
+        return EventPlacemarkBuilder.CreatePlacemark(mission, clock, EventPlacemarkOptions.Kmz);
     }
 }

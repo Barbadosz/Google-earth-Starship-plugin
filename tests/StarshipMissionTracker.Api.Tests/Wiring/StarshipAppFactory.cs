@@ -1,6 +1,9 @@
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace StarshipMissionTracker.Api.Tests.Wiring;
 
@@ -11,9 +14,13 @@ namespace StarshipMissionTracker.Api.Tests.Wiring;
 public sealed class StarshipAppFactory : WebApplicationFactory<Program>
 {
     private readonly Dictionary<string, string?> _settings;
+    private readonly TimeProvider? _clock;
+    private readonly bool _loopbackCaller;
 
-    public StarshipAppFactory(IDictionary<string, string?>? settings = null)
+    public StarshipAppFactory(IDictionary<string, string?>? settings = null, TimeProvider? clock = null, bool loopbackCaller = false)
     {
+        _clock = clock;
+        _loopbackCaller = loopbackCaller;
         TempDirectory = Path.Combine(Path.GetTempPath(), "starship-wiring-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(TempDirectory);
         DatabaseFile = Path.Combine(TempDirectory, "db", "starship.db");
@@ -43,6 +50,18 @@ public sealed class StarshipAppFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
+        if (_clock is not null)
+        {
+            // Replaces the TimeProvider.System registration of the wiring (the last registration wins).
+            builder.ConfigureTestServices(services => services.AddSingleton(_clock));
+        }
+
+        if (_loopbackCaller)
+        {
+            // The in-process TestServer has no remote address; mutating endpoints fail closed on null, so say "loopback".
+            builder.ConfigureTestServices(services => services.AddTransient<IStartupFilter, LoopbackCallerStartupFilter>());
+        }
+
         foreach (var (key, value) in _settings)
         {
             builder.UseSetting(key, value);
@@ -62,4 +81,18 @@ public sealed class StarshipAppFactory : WebApplicationFactory<Program>
             // A file still held by the OS is left in the temp folder; not a test failure.
         }
     }
+}
+
+/// <summary>Gives every request of the in-process test server the loopback remote address (first middleware).</summary>
+internal sealed class LoopbackCallerStartupFilter : IStartupFilter
+{
+    public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+    {
+        app.Use((context, nextMiddleware) =>
+        {
+            context.Connection.RemoteIpAddress ??= System.Net.IPAddress.Loopback;
+            return nextMiddleware(context);
+        });
+        next(app);
+    };
 }

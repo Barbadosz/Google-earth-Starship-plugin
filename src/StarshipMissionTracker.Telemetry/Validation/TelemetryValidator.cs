@@ -22,7 +22,7 @@ public static class TelemetryValidator
     public static readonly TimeSpan DefaultFutureTolerance = TimeSpan.FromSeconds(2);
 
     public static bool IsSimulatorSource(string sourceName) =>
-        sourceName.StartsWith(PathReplaySampler.SourceName, StringComparison.Ordinal);
+        string.Equals(sourceName, SimulatorSource.Name, StringComparison.Ordinal);
 
     /// <param name="sample">The sample to check.</param>
     /// <param name="previousTimestampUtc">Timestamp of the previous accepted sample of the same vehicle, if any.</param>

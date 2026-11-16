@@ -64,4 +64,24 @@ public class TelemetryValidatorTests
     {
         Assert.True(TelemetryValidator.Validate(Sample(lat: null, lon: null, alt: null), null, Now).IsValid);
     }
+
+    [Theory]
+    [InlineData("Internal simulator", true)]
+    [InlineData("Internal simulator 2", false)]
+    [InlineData("Internal simulator (copy)", false)]
+    [InlineData("internal simulator", false)]
+    [InlineData("", false)]
+    public void IsSimulatorSource_IsExactOrdinalEquality(string source, bool expected)
+    {
+        Assert.Equal(expected, TelemetryValidator.IsSimulatorSource(source));
+    }
+
+    [Fact]
+    public void SourceNameWithSimulatorPrefix_IsNotTreatedAsSimulator()
+    {
+        // A foreign adapter whose name merely starts with the simulator's must not get the future-timestamp exemption.
+        var future = Now.AddHours(1);
+        var lookalike = Sample(future, DataQuality.Measured, SimulatorSource.Name + " (adapter)");
+        Assert.False(TelemetryValidator.Validate(lookalike, null, Now).IsValid);
+    }
 }

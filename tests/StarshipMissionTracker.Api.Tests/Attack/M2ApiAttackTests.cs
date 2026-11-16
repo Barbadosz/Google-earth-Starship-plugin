@@ -37,7 +37,7 @@ public class M2ApiAttackTests
     [InlineData("{\"mission\":\"demo-ift\",\"mission\":\"demo-ift\"}")]
     [InlineData("{\"mission\":\"demo-ift\",\"mis\\u0073ion\":\"x\"}")]
     [InlineData("{\"a\":[[[[[[[[[[1]]]]]]]]]],\"mission\":\"demo-ift\"}")]
-    [InlineData("{\"mission\":\"\\ud800\"}", Skip = "M2-ATTACK-1: lone surrogate in a JSON string gives an unhandled InvalidOperationException (500)")]
+    [InlineData("{\"mission\":\"\\ud800\"}")]
     [InlineData("{\"mission\":\"demo\\u0000ift\"}")]
     [InlineData("{\"mission\":\"d\\u00e9mo-ift\"}")]
     [InlineData("{\"mission\":\"\\ud83d\\ude80\"}")]
@@ -51,7 +51,7 @@ public class M2ApiAttackTests
         await AssertStillIdleAsync(host, body);
     }
 
-    [Fact(Skip = "M2-ATTACK-1: invalid UTF-8 inside a JSON string gives an unhandled InvalidOperationException (500)")]
+    [Fact]
     public async Task Start_InvalidUtf8Bytes_Return400()
     {
         await using var host = AttackHost.Start();

@@ -53,9 +53,10 @@ public static class JsonBody
                 }
             }
 
+            ValidateStrings(root);
             return (root.Clone(), null);
         }
-        catch (JsonException)
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
         {
             return (default, ApiErrors.BadRequest("The body is not valid JSON."));
         }
@@ -102,6 +103,33 @@ public static class JsonBody
         }
 
         return (element.GetString(), null);
+    }
+
+    // JsonDocument decodes strings lazily: a lone surrogate or invalid UTF-8 only throws InvalidOperationException on
+    // access. Touch every string eagerly so the failure becomes a 400 here instead of a 500 later.
+    private static void ValidateStrings(JsonElement element)
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.String:
+                _ = element.GetString();
+                break;
+            case JsonValueKind.Array:
+                foreach (var item in element.EnumerateArray())
+                {
+                    ValidateStrings(item);
+                }
+
+                break;
+            case JsonValueKind.Object:
+                foreach (var property in element.EnumerateObject())
+                {
+                    _ = property.Name;
+                    ValidateStrings(property.Value);
+                }
+
+                break;
+        }
     }
 
     private static async Task CopyLimitedAsync(Stream source, MemoryStream target, CancellationToken cancellationToken)

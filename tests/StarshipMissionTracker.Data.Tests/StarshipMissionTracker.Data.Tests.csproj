@@ -10,5 +10,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\StarshipMissionTracker.Data\StarshipMissionTracker.Data.csproj" />
+    <ProjectReference Include="..\..\src\StarshipMissionTracker.Trajectory\StarshipMissionTracker.Trajectory.csproj" />
   </ItemGroup>
 </Project>

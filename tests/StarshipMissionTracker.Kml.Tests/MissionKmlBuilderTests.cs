@@ -83,8 +83,9 @@ public class MissionKmlBuilderTests
         var topNames = document.Elements(K + "Folder").Select(f => f.Element(K + "name")!.Value).ToList();
         Assert.Equal(
             [
-                KmlLod.FolderName.MissionInformation, KmlLod.FolderName.PlannedTrajectory, KmlLod.FolderName.ActualTrajectory,
-                KmlLod.FolderName.Vehicles, KmlLod.FolderName.MissionEvents,
+                KmlLod.FolderName.MissionInformation, KmlLod.FolderName.PlannedTrajectory, KmlLod.FolderName.FlightCurtain,
+                KmlLod.FolderName.ActualTrajectory, KmlLod.FolderName.Vehicles, KmlLod.FolderName.MissionEvents,
+                KmlLod.FolderName.EventLabels,
             ],
             topNames);
 
@@ -106,6 +107,84 @@ public class MissionKmlBuilderTests
         }
 
         Assert.Equal(3, ChildFolder(document, KmlLod.FolderName.MissionEvents).Elements(K + "Placemark").Count());
+    }
+
+    // ---- N-39a toggle layers / N-40a LookAt ----
+
+    [Fact]
+    public void Build_ToggleFolders_HaveStableIds_AndSingleCheckboxStyle()
+    {
+        var document = Document(Parse(new MissionKmlBuilder().Build(CreateMission(T0))));
+        var styles = document.Elements(K + "Style").ToDictionary(s => s.Attribute("id")!.Value);
+
+        var curtain = ChildFolder(document, KmlLod.FolderName.FlightCurtain);
+        var labels = ChildFolder(document, KmlLod.FolderName.EventLabels);
+        Assert.Equal(KmlLod.FolderId.Curtain, curtain.Attribute("id")!.Value);
+        Assert.Equal(KmlLod.FolderId.EventLabels, labels.Attribute("id")!.Value);
+        Assert.All(new[] { curtain, labels }, f => Assert.Equal("#" + KmlLod.ToggleStyleId.ToggleFolder, f.Element(K + "styleUrl")!.Value));
+        Assert.Equal("checkHideChildren",
+            styles[KmlLod.ToggleStyleId.ToggleFolder].Descendants(K + "listItemType").Single().Value);
+        Assert.Null(ChildFolder(document, KmlLod.FolderName.MissionEvents).Attribute("id"));
+        Assert.Equal("0", styles[KmlLod.StyleId.Event].Element(K + "LabelStyle")!.Element(K + "scale")!.Value);
+        Assert.Equal("0.8", styles[KmlLod.ToggleStyleId.EventLabel].Element(K + "LabelStyle")!.Element(K + "scale")!.Value);
+    }
+
+    [Fact]
+    public void Build_Curtain_HasThePlannedPathCoordinates_PathLineIsNotExtruded_NoDensificationNote()
+    {
+        var mission = CreateMission(T0);
+        var document = Document(Parse(new MissionKmlBuilder(TrajectoryDensificationOptions.Default, AllPaths(mission)).Build(mission)));
+        var planned = ChildFolder(document, KmlLod.FolderName.PlannedTrajectory);
+        var curtain = ChildFolder(document, KmlLod.FolderName.FlightCurtain);
+
+        var pathLines = planned.Descendants(K + "LineString").ToList();
+        var curtainLines = curtain.Descendants(K + "LineString").ToList();
+        Assert.Equal(2, pathLines.Count);
+        Assert.All(pathLines, ls => Assert.Equal("0", ls.Element(K + "extrude")!.Value));
+        Assert.All(curtainLines, ls => Assert.Equal("1", ls.Element(K + "extrude")!.Value));
+        Assert.Equal(
+            pathLines.Select(ls => ls.Element(K + "coordinates")!.Value),
+            curtainLines.Select(ls => ls.Element(K + "coordinates")!.Value));
+        Assert.All(curtain.Elements(K + "Placemark"), p => Assert.Null(p.Element(K + "description")));
+        Assert.All(curtain.Elements(K + "Placemark"), p => Assert.StartsWith("#" + KmlLod.ToggleStyleId.CurtainPrefix, p.Element(K + "styleUrl")!.Value));
+    }
+
+    [Fact]
+    public void Build_EventLabels_ShareIconCoordinates_AndTimeStamps()
+    {
+        var document = Document(Parse(new MissionKmlBuilder().Build(CreateMission(T0))));
+        var icons = ChildFolder(document, KmlLod.FolderName.MissionEvents).Elements(K + "Placemark")
+            .Where(p => p.Element(K + "Point") is not null).ToList();
+        var labels = ChildFolder(document, KmlLod.FolderName.EventLabels).Elements(K + "Placemark").ToList();
+
+        // The Coast event has no position: it has an icon placemark but no label.
+        Assert.Equal(icons.Count, labels.Count);
+        for (var i = 0; i < icons.Count; i++)
+        {
+            Assert.EndsWith(icons[i].Element(K + "name")!.Value, labels[i].Element(K + "name")!.Value, StringComparison.Ordinal);
+            Assert.StartsWith("T+", labels[i].Element(K + "name")!.Value, StringComparison.Ordinal);
+            Assert.Equal(PointCoordinates(icons[i]), PointCoordinates(labels[i]));
+            Assert.Equal(icons[i].Element(K + "TimeStamp")!.Value, labels[i].Element(K + "TimeStamp")!.Value);
+            Assert.Null(labels[i].Element(K + "description"));
+        }
+
+        static string PointCoordinates(XElement p) => p.Element(K + "Point")!.Element(K + "coordinates")!.Value;
+    }
+
+    [Fact]
+    public void Build_MissionInformation_HasTimelineTable_AndLookAtAtT0()
+    {
+        var document = Document(Parse(new MissionKmlBuilder().Build(CreateMission(T0))));
+        var placemark = ChildFolder(document, KmlLod.FolderName.MissionInformation).Element(K + "Placemark")!;
+        var description = placemark.Element(K + "description")!.Value;
+
+        Assert.Contains(TimelineHtml.Heading, description, StringComparison.Ordinal);
+        Assert.Contains("T+00:02:40", description, StringComparison.Ordinal);
+        Assert.Contains("Stage Separation", description, StringComparison.Ordinal);
+        Assert.Equal(["name", "description", "LookAt", "Point"], placemark.Elements().Select(e => e.Name.LocalName).Take(4));
+        var lookAt = placemark.Element(K + "LookAt")!;
+        Assert.Equal("2026-12-01T14:00:00Z", lookAt.Element(Gx + "TimeStamp")!.Element(K + "when")!.Value);
+        Assert.Equal(document.Element(K + "LookAt")!.ToString(), lookAt.ToString());
     }
 
     [Fact]

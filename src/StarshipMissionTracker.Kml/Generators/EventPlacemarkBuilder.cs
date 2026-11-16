@@ -29,6 +29,41 @@ internal static class EventPlacemarkBuilder
             K("name", KmlLod.FolderName.MissionEvents),
             events.OrderBy(e => e.OffsetSeconds).Select(e => CreatePlacemark(e, clock, options)));
 
+    /// <summary>
+    /// Toggle folder "Event labels" (id <see cref="KmlLod.FolderId.EventLabels"/>, style #toggle-folder) with one label-only
+    /// Placemark per event that has coordinates. Uses the same TimeStamp rule as the event folder of the same mode.
+    /// </summary>
+    public static XElement CreateLabelFolder(IEnumerable<MissionEvent> events, LaunchClock clock, EventPlacemarkOptions options) =>
+        K("Folder",
+            new XAttribute("id", KmlLod.FolderId.EventLabels),
+            K("name", KmlLod.FolderName.EventLabels),
+            K("styleUrl", "#" + KmlLod.ToggleStyleId.ToggleFolder),
+            events.OrderBy(e => e.OffsetSeconds)
+                .Where(e => e is { Latitude: not null, Longitude: not null })
+                .Select(e => CreateLabelPlacemark(e, clock, options)));
+
+    /// <summary>Label-only Placemark "T+hh:mm:ss Name" (style #event-label, no balloon) at the event position. Requires Latitude/Longitude.</summary>
+    public static XElement CreateLabelPlacemark(MissionEvent missionEvent, LaunchClock clock, EventPlacemarkOptions options)
+    {
+        if (missionEvent is not { Latitude: { } lat, Longitude: { } lon })
+        {
+            throw new ArgumentException("The event has no coordinates.", nameof(missionEvent));
+        }
+
+        var placemark = K("Placemark", K("name", $"{TLabel(missionEvent.OffsetSeconds)} {missionEvent.Name}"));
+        if (options.TimeStamp)
+        {
+            placemark.Add(K("TimeStamp", K("when", clock.Format(missionEvent.OffsetSeconds, NeedsMilliseconds([missionEvent.OffsetSeconds])))));
+        }
+
+        placemark.Add(
+            K("styleUrl", "#" + KmlLod.ToggleStyleId.EventLabel),
+            K("Point",
+                K("altitudeMode", missionEvent.AltitudeMeters.HasValue ? "absolute" : "clampToGround"),
+                K("coordinates", Coordinates(lat, lon, missionEvent.AltitudeMeters))));
+        return placemark;
+    }
+
     public static XElement CreatePlacemark(MissionEvent mission, LaunchClock clock, EventPlacemarkOptions options)
     {
         var ms = NeedsMilliseconds([mission.OffsetSeconds]);

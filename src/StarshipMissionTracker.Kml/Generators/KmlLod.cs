@@ -46,9 +46,38 @@ public static class KmlLod
         public const string ActualTrajectory = "Actual Trajectory";
         public const string Vehicles = "Vehicles";
         public const string MissionEvents = "Mission Events";
+        public const string EventLabels = "Event labels";
+        public const string FlightCurtain = "Flight path curtain";
         public const string Starship = "Starship";
         public const string SuperHeavy = "Super Heavy";
     }
+
+    /// <summary>
+    /// Style IDs of the N-39a toggle layers. Kept apart from <see cref="StyleId"/> on purpose: these styles are
+    /// defined by <c>KmlStyles.CreateToggleStyles()</c>, which the document builders append, not by <c>CreateAll()</c>.
+    /// </summary>
+    public static class ToggleStyleId
+    {
+        /// <summary>Label-only event style (icon scale 0, label 0.8).</summary>
+        public const string EventLabel = "event-label";
+
+        /// <summary>Folder style: ListStyle checkHideChildren (one checkbox, no child list).</summary>
+        public const string ToggleFolder = "toggle-folder";
+
+        /// <summary>Prefix of the curtain styles: "curtain-" + <see cref="PathStyleId"/> result.</summary>
+        public const string CurtainPrefix = "curtain-";
+    }
+
+    /// <summary>Stable folder <c>id</c> attributes of the toggle folders (keeps the checkbox state across refreshes).</summary>
+    public static class FolderId
+    {
+        public const string Curtain = "curtain";
+        public const string EventLabels = "event-labels";
+    }
+
+    /// <summary>Style ID (no '#') of the extruded-curtain Placemark that belongs to a path style (see <see cref="PathStyleId"/>).</summary>
+    public static string CurtainStyleId(TrajectoryType type, VehicleType vehicle, DataQuality quality) =>
+        ToggleStyleId.CurtainPrefix + PathStyleId(type, vehicle, quality);
 
     /// <summary>Style ID (no '#') for a path/track Placemark. Estimated actual data never gets the measured style.</summary>
     public static string PathStyleId(TrajectoryType type, VehicleType vehicle, DataQuality quality)

@@ -11,7 +11,13 @@ namespace StarshipMissionTracker.Kml.Generators;
 public static class PlannedPathGenerator
 {
     /// <summary>Placemark with a LineString (absolute, extrude 1, tessellate 0).</summary>
-    public static XElement CreatePlacemark(Vehicle vehicle, FlightPath path)
+    public static XElement CreatePlacemark(Vehicle vehicle, FlightPath path) => CreatePlacemark(vehicle, path, extrude: true);
+
+    /// <summary>
+    /// Same Placemark; <paramref name="extrude"/> false emits <c>extrude 0</c> (the curtain is then a separate layer,
+    /// see <see cref="CurtainGenerator"/>). <c>true</c> is byte-identical to the two-argument overload.
+    /// </summary>
+    public static XElement CreatePlacemark(Vehicle vehicle, FlightPath path, bool extrude)
     {
         ArgumentNullException.ThrowIfNull(vehicle);
         ArgumentNullException.ThrowIfNull(path);
@@ -30,7 +36,7 @@ public static class PlannedPathGenerator
             K("styleUrl", "#" + KmlLod.PathStyleId(path.Type, vehicle.Type, path.Quality)),
             KmlPathInfo.Extended(vehicle, path),
             K("LineString",
-                K("extrude", "1"),
+                K("extrude", extrude ? "1" : "0"),
                 K("tessellate", "0"),
                 K("altitudeMode", "absolute"),
                 K("coordinates", coordinates)));

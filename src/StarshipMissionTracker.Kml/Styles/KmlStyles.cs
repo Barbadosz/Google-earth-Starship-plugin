@@ -93,6 +93,24 @@ public static class KmlStyles
         return styles;
     }
 
+    /// <summary>
+    /// N-39a toggle styles (not part of <see cref="CreateAll()"/>; the document builder appends them): the
+    /// label-only event style, the folder style (checkHideChildren) and one curtain style per planned/reconstructed path style (actual paths get no curtain).
+    /// </summary>
+    public static IReadOnlyList<XElement> CreateToggleStyles()
+    {
+        var styles = new List<XElement> { EventLabelStyle(), ToggleFolderStyle() };
+        (string PathId, string Color)[] curtains =
+        [
+            (KmlLod.StyleId.PlannedStarship, PlannedColor),
+            (KmlLod.StyleId.PlannedSuperHeavy, PlannedSuperHeavyColor),
+            (KmlLod.StyleId.ReconstructedStarship, ReconstructedColor),
+            (KmlLod.StyleId.ReconstructedSuperHeavy, ReconstructedColor),
+        ];
+        styles.AddRange(curtains.Select(c => CurtainStyle(KmlLod.ToggleStyleId.CurtainPrefix + c.PathId, c.Color)));
+        return styles;
+    }
+
     /// <summary>The colour of the path style with the given ID (for tests and legends).</summary>
     public static string PathColor(string styleId) => styleId switch
     {
@@ -123,11 +141,31 @@ public static class KmlStyles
                     new XAttribute("xunits", "fraction"), new XAttribute("yunits", "fraction"))),
             K("LabelStyle", K("scale", "0.8")));
 
+    // Label-only placemark: the icon is hidden (scale 0), the text stays.
+    private static XElement EventLabelStyle() =>
+        K("Style", new XAttribute("id", KmlLod.ToggleStyleId.EventLabel),
+            K("IconStyle", K("scale", "0")),
+            K("LabelStyle", K("scale", "0.8")));
+
+    // Folder with a single checkbox: children are not listed in the layer panel.
+    private static XElement ToggleFolderStyle() =>
+        K("Style", new XAttribute("id", KmlLod.ToggleStyleId.ToggleFolder),
+            K("ListStyle", K("listItemType", "checkHideChildren")));
+
+    // Extruded-curtain placemark: no visible line (width 0, fully transparent), no icon/label, only the PolyStyle fill.
+    private static XElement CurtainStyle(string id, string color) =>
+        K("Style", new XAttribute("id", id),
+            K("IconStyle", K("scale", "0")),
+            K("LabelStyle", K("scale", "0")),
+            K("LineStyle", K("color", "00000000"), K("width", "0")),
+            K("PolyStyle", K("color", CurtainAlpha + color[2..])));
+
+    // Icon only (N-39a): the event label text comes from the toggleable "Event labels" layer (style event-label).
     private static XElement EventStyle() =>
         K("Style", new XAttribute("id", KmlLod.StyleId.Event),
             K("IconStyle",
                 K("color", EventColor),
                 K("scale", Number(EventIconScale)),
                 K("Icon", K("href", EventIconHref))),
-            K("LabelStyle", K("scale", "0.8")));
+            K("LabelStyle", K("scale", "0")));
 }

@@ -58,13 +58,18 @@ public sealed class MissionKmlBuilder : IMissionKmlBuilder
             K("description", Cdata(MissionHtml(mission))),
             LookAt(mission),
             KmlStyles.CreateAll(),
+            KmlStyles.CreateToggleStyles(),
             MissionInformationFolder(mission),
             TrajectoryFolder(mission, KmlLod.FolderName.PlannedTrajectory, IsPlannedFolderPath,
-                "Planned / Reconstructed – not live telemetry."),
+                "Planned / Reconstructed – not live telemetry.", extrude: false),
+            CurtainGenerator.CreateFolder(OrderedVehicles(mission)
+                .SelectMany(v => v.FlightPaths.Where(IsPlannedFolderPath).Select(p => (v, p)))),
             TrajectoryFolder(mission, KmlLod.FolderName.ActualTrajectory, p => p.Type == TrajectoryType.Actual,
-                "Actual-type paths (see the quality note on each path). Empty when no actual trajectory is available."),
+                "Actual-type paths (see the quality note on each path). Empty when no actual trajectory is available.",
+                extrude: true),
             VehiclesFolder(mission),
-            EventGenerator.CreateFolder(mission.Config.Events, clock));
+            EventGenerator.CreateFolder(mission.Config.Events, clock),
+            EventLabelGenerator.CreateFolder(mission.Config.Events, clock, timeStamp: true));
 
         return K("kml",
             new XAttribute(XNamespace.Xmlns + "gx", Gx.NamespaceName),
@@ -73,7 +78,11 @@ public sealed class MissionKmlBuilder : IMissionKmlBuilder
 
     private static bool IsPlannedFolderPath(FlightPath path) => path.Type != TrajectoryType.Actual;
 
-    private XElement TrajectoryFolder(Mission mission, string name, Func<FlightPath, bool> include, string note)
+    /// <param name="extrude">
+    /// false for the planned folder: its curtain is the separate toggle folder "Flight path curtain" (N-39a).
+    /// Actual paths keep the extruded LineString (the plan has a curtain layer only for the planned path).
+    /// </param>
+    private XElement TrajectoryFolder(Mission mission, string name, Func<FlightPath, bool> include, string note, bool extrude)
     {
         var folder = K("Folder", K("name", name), K("description", note));
         foreach (var vehicle in OrderedVehicles(mission))
@@ -88,7 +97,7 @@ public sealed class MissionKmlBuilder : IMissionKmlBuilder
             foreach (var path in paths)
             {
                 vehicleFolder.Add(
-                    AppendDensificationNote(PlannedPathGenerator.CreatePlacemark(vehicle, path), path),
+                    AppendDensificationNote(PlannedPathGenerator.CreatePlacemark(vehicle, path, extrude), path),
                     AppendDensificationNote(GxTrackGenerator.CreatePlacemark(vehicle, path, mission.Clock), path));
             }
 
@@ -162,10 +171,14 @@ public sealed class MissionKmlBuilder : IMissionKmlBuilder
     {
         var placemark = K("Placemark",
             K("name", mission.Name),
-            K("description", Cdata(MissionHtml(mission))));
+            K("description", Cdata(MissionHtml(mission) + TimelineHtml.Create(mission.Config.Events))));
         if (LaunchSite(mission) is { } site)
         {
-            placemark.Add(K("Point",
+            // N-40a hardening: double-click on Mission Information flies to the launch site with the slider (Sun) at T0.
+            // KML order: AbstractView (LookAt) comes before the Geometry.
+            placemark.Add(
+                MissionLookAt.Create(site.Latitude, site.Longitude, mission.Clock),
+                K("Point",
                 K("altitudeMode", "clampToGround"),
                 K("coordinates", Coordinates(site.Latitude, site.Longitude, null))));
         }
@@ -214,24 +227,9 @@ public sealed class MissionKmlBuilder : IMissionKmlBuilder
         return first is null ? null : (first.Points[0].Latitude, first.Points[0].Longitude);
     }
 
-    /// <summary>Initial view over the launch site; gx:TimeStamp puts the time slider at T0.</summary>
-    private static XElement? LookAt(Mission mission)
-    {
-        if (LaunchSite(mission) is not { } site)
-        {
-            return null;
-        }
-
-        return K("LookAt",
-            G("TimeStamp", K("when", mission.Clock.Format(0))),
-            K("longitude", Degrees(site.Longitude)),
-            K("latitude", Degrees(site.Latitude)),
-            K("altitude", "0"),
-            K("heading", Number(InitialViewHeadingDegrees)),
-            K("tilt", Number(InitialViewTiltDegrees)),
-            K("range", Number(InitialViewRangeMeters)),
-            K("altitudeMode", "absolute"));
-    }
+    /// <summary>Initial view over the launch site; gx:TimeStamp puts the time slider (and the Sun) at T0.</summary>
+    private static XElement? LookAt(Mission mission) =>
+        LaunchSite(mission) is { } site ? MissionLookAt.Create(site.Latitude, site.Longitude, mission.Clock) : null;
 
     private static string Serialize(XElement root)
     {

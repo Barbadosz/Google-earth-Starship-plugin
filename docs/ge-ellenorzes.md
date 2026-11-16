@@ -48,8 +48,8 @@ direction of travel, tilt is `90 - pitch`, roll is 0 (see [altitude-reference.md
 
 ## 3. Planned paths (blue, 3D, extruded)
 
-- **Look for:** a blue line for each vehicle, high above the ground, with a thin vertical "curtain" down to the ground
-  (the `extrude` option). The line follows the curve of the Earth. The Starship path goes far east, to the Indian
+- **Look for:** a blue line for each vehicle, high above the ground, with a thin vertical "curtain" down to the ground.
+  Since N-39a the line itself is not extruded; the curtain is the separate folder "Flight path curtain" (section 11). The line follows the curve of the Earth. The Starship path goes far east, to the Indian
   Ocean. The Super Heavy path is short and comes back to the launch site.
 - **Wrong:** the line cuts through the ground, is green or orange (blue is planned), has no curtain, or the curtain is
   missing on the long Starship path.
@@ -60,7 +60,9 @@ direction of travel, tilt is `90 - pitch`, roll is 0 (see [altitude-reference.md
 ## 4. Layer folders
 
 The Places panel follows spec section 9.1: Mission Information, Planned Trajectory (Starship, Super Heavy),
-Actual Trajectory (empty in M1), Vehicles (for each vehicle a 3D model and an icon folder), Mission Events.
+Actual Trajectory (empty in M1), Vehicles (for each vehicle a 3D model and an icon folder), Mission Events. Since N-39a
+there are two more: "Flight path curtain" (after Planned Trajectory) and "Event labels" (after Mission Events), see
+section 11.
 
 - **Look for:** untick and tick each folder. The matching thing appears and disappears alone.
 - **Wrong:** a folder is missing, is in the wrong place, or unticking it hides something else.
@@ -68,6 +70,7 @@ Actual Trajectory (empty in M1), Vehicles (for each vehicle a 3D model and an ic
 - [ ] Each folder can be switched on and off alone.
 - [ ] The Mission Information text shows the launch time (UTC) and "planned launch time, subject to change".
 - [ ] The text says planned/reconstructed, not live telemetry.
+- [ ] The Mission Information balloon ends with a "Flight timeline" table (T+ time, event name, description).
 
 ## 5. Time slider animation from T0
 
@@ -127,8 +130,9 @@ The 3D model is only drawn when you are close (Region with `minLodPixels` = 2000
 
 ## 10. Performance
 
-`doc.kml` is about 0.86 MB. The path data appears about 4 times per vehicle (the static line, the time trail, the
-moving vehicle track, ...). The Starship path has about 1970 points after densification.
+`doc.kml` is about 0.93 MB (0.86 MB before N-39a; the curtain folder repeats the planned path coordinates once
+more). The path data appears about 5 times per vehicle (the static line, its curtain, the time trail, the moving
+vehicle track, ...). The Starship path has about 1970 points after densification.
 
 - **Look for:** is rotating, zooming and moving the time slider smooth?
 - **Wrong:** freezing, slow redraw, long loading time.
@@ -136,6 +140,32 @@ moving vehicle track, ...). The Starship path has about 1970 points after densif
 - [ ] Moving the slider and the view is smooth.
 - [ ] Write in Findings: computer type (rough), GE Pro version, and how smooth it is. This is the input for N-20
   (optimising the document size).
+
+## 11. Toggle layers and Sun at T0 (N-39a, N-40a)
+
+Two folders can be switched on and off on their own: "Flight path curtain" (the vertical walls under the planned path)
+and "Event labels" (the "T+hh:mm:ss Name" texts next to the event icons). The event icons themselves have no label any
+more. The document view carries the launch time (`gx:TimeStamp` = T0), so opening the file should put the time
+slider and the Sun at T0. KML cannot switch the Sun on: turn it on by hand (View > Sun). The slider shows local time
+unless Tools > Options > "Show time in UTC" (or similar) is set; that is not a bug.
+
+- **Look for (Cli KMZ):** with View > Sun on, open `output/demo-ift.kmz`. The light and shadows match the launch time
+  (14:00 UTC is morning in Texas). Double-click the Mission Information placemark: the view flies to the launch site
+  and the slider jumps back to T0.
+- **Look for (server):** open the master KML (`/kml/master`). The Sun and slider go to T0 (the simulation launch time
+  if a simulation has run, otherwise the planned T0). After the NetworkLinks refresh the camera and the slider do not
+  move.
+- **Wrong:** the Sun follows the computer clock after opening, the curtain or the labels cannot be switched off, the
+  folder shows its children in the Places panel, a label has a visible icon, or a checkbox switches back on by itself.
+- [ ] Cli KMZ: opening the file sets the Sun / slider to T0.
+- [ ] Server master: opening it sets the Sun / slider to T0; a NetworkLink refresh does not move camera or slider.
+- [ ] "Flight path curtain" and "Event labels" each show one checkbox only (no child items listed).
+- [ ] Unticking "Flight path curtain" leaves the blue line without walls; unticking "Event labels" leaves the icons
+  without text.
+- [ ] Label placemarks show only text (no icon, no pin), at the same place as the event icon.
+- [ ] Server mode: untick both folders, wait for at least two refreshes of "Planned trajectory & events" (or change
+  the launch time): both stay unticked.
+- [ ] Performance (section 10) is still fine with the bigger `doc.kml` (about 0.93 MB, KMZ about 183 KB).
 
 ## Findings
 

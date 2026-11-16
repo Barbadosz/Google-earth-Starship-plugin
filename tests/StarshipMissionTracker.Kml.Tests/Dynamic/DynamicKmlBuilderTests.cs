@@ -14,6 +14,7 @@ namespace StarshipMissionTracker.Kml.Tests.Dynamic;
 public class DynamicKmlBuilderTests
 {
     private static readonly XNamespace K = KmlXml.Kml;
+    private static readonly XNamespace Gx = KmlXml.Gx;
     private static readonly TimeSpan MinRefresh = TimeSpan.FromSeconds(2);
     private readonly DynamicKmlBuilder _builder = new();
 
@@ -88,15 +89,32 @@ public class DynamicKmlBuilderTests
     }
 
     [Fact]
-    public void Master_NoTimeElements_AndNoCookie_AndLookAtOverLaunchSite()
+    public void Master_OnlyLookAtHasTime_NoCookie_AndLookAtOverLaunchSite()
     {
         var doc = Parse(Master());
 
-        AssertNone(doc.Descendants().Where(e => e.Name.LocalName is "TimeStamp" or "TimeSpan"));
+        // N-40a: the only time element is the LookAt gx:TimeStamp (Sun/slider at T0 when the master is opened).
+        AssertNone(doc.Descendants().Where(e => (e.Name.LocalName is "TimeStamp" or "TimeSpan") && e.Parent?.Name != K + "LookAt"));
         Assert.Empty(doc.Descendants(K + "NetworkLinkControl"));
         var lookAt = doc.Descendants(K + "LookAt").Single();
         Assert.Equal("-97.156600", lookAt.Element(K + "longitude")!.Value);
         Assert.Equal("25.997200", lookAt.Element(K + "latitude")!.Value);
+        Assert.Equal("2026-12-01T14:00:00Z", lookAt.Element(Gx + "TimeStamp")!.Element(K + "when")!.Value);
+        Assert.All(doc.Descendants(K + "NetworkLink"), l => Assert.Equal("0", l.Element(K + "flyToView")!.Value));
+        AssertValid(Master());
+    }
+
+    [Fact]
+    public void Master_LookAtTime_IsTheEffectiveT0_SimulationAnchorBeforePlanned()
+    {
+        var anchor = T0.AddHours(3).AddSeconds(1.5);
+        var info = new MissionInfo(Guid.Parse("11111111-1111-1111-1111-111111111111"), "test", "Test mission", null,
+            MissionStatus.InFlight, T0, null, true, T0, (PadLat, PadLon), simulationLaunchTimeUtc: anchor);
+
+        var lookAt = Parse(_builder.BuildMaster(info, Urls, Settings)).Descendants(K + "LookAt").Single();
+
+        Assert.Equal(new LaunchClock(anchor).Format(0), lookAt.Element(Gx + "TimeStamp")!.Element(K + "when")!.Value);
+        Assert.NotEqual(new LaunchClock(T0).Format(0), lookAt.Element(Gx + "TimeStamp")!.Element(K + "when")!.Value);
     }
 
     [Fact]
@@ -166,11 +184,57 @@ public class DynamicKmlBuilderTests
         var doc = Parse(Planned());
 
         var folders = doc.Descendants(K + "Document").Single().Elements(K + "Folder").Select(f => f.Element(K + "name")!.Value).ToList();
-        Assert.Equal(["Mission Information", "Planned Trajectory", "Mission Events"], folders);
+        Assert.Equal(["Mission Information", "Planned Trajectory", "Flight path curtain", "Mission Events", "Event labels"], folders);
         AssertNone(doc.Descendants().Where(e => e.Name.LocalName is "TimeStamp" or "TimeSpan" or "Track"));
-        Assert.Equal(2, doc.Descendants(K + "LineString").Count());
+        Assert.Equal(2, TopFolder(doc, KmlLod.FolderName.PlannedTrajectory).Descendants(K + "LineString").Count());
+        Assert.Equal(2, TopFolder(doc, KmlLod.FolderName.FlightCurtain).Descendants(K + "LineString").Count());
         Assert.Equal(3, doc.Descendants(K + "Placemark").Count(p => p.Element(K + "styleUrl")?.Value == "#event"));
         Assert.All(doc.Descendants(K + "LineString"), ls => Assert.Equal("absolute", ls.Element(K + "altitudeMode")!.Value));
+    }
+
+    private static XElement TopFolder(XDocument doc, string name) =>
+        doc.Descendants(K + "Document").Single().Elements(K + "Folder").Single(f => f.Element(K + "name")!.Value == name);
+
+    [Fact]
+    public void Planned_ToggleFolders_HaveStableIds_SingleCheckbox_AndMatchThePathsAndEvents()
+    {
+        var kml = Planned(densified: PlannedMission().Vehicles.SelectMany(v => v.FlightPaths).ToHashSet());
+        var doc = Parse(kml);
+        var styles = doc.Descendants(K + "Style").Select(s => s.Attribute("id")!.Value).ToList();
+        var curtain = TopFolder(doc, KmlLod.FolderName.FlightCurtain);
+        var labels = TopFolder(doc, KmlLod.FolderName.EventLabels);
+        var planned = TopFolder(doc, KmlLod.FolderName.PlannedTrajectory);
+
+        Assert.Equal(KmlLod.FolderId.Curtain, curtain.Attribute("id")!.Value);
+        Assert.Equal(KmlLod.FolderId.EventLabels, labels.Attribute("id")!.Value);
+        Assert.All(new[] { curtain, labels }, f => Assert.Equal("#" + KmlLod.ToggleStyleId.ToggleFolder, f.Element(K + "styleUrl")!.Value));
+        Assert.Contains(KmlLod.ToggleStyleId.ToggleFolder, styles);
+        Assert.Contains(KmlLod.ToggleStyleId.EventLabel, styles);
+        Assert.All(planned.Descendants(K + "LineString"), ls => Assert.Equal("0", ls.Element(K + "extrude")!.Value));
+        Assert.All(curtain.Descendants(K + "LineString"), ls => Assert.Equal("1", ls.Element(K + "extrude")!.Value));
+        Assert.Equal(
+            planned.Descendants(K + "LineString").Select(ls => ls.Element(K + "coordinates")!.Value),
+            curtain.Descendants(K + "LineString").Select(ls => ls.Element(K + "coordinates")!.Value));
+        Assert.All(curtain.Descendants(K + "Placemark"), p => Assert.Null(p.Element(K + "description")));
+
+        var icons = doc.Descendants(K + "Placemark")
+            .Where(p => p.Element(K + "styleUrl")?.Value == "#event" && p.Element(K + "Point") is not null)
+            .Select(p => p.Element(K + "Point")!.Element(K + "coordinates")!.Value).Order(StringComparer.Ordinal);
+        var labelCoords = labels.Elements(K + "Placemark")
+            .Select(p => p.Element(K + "Point")!.Element(K + "coordinates")!.Value).Order(StringComparer.Ordinal);
+        Assert.Equal(icons, labelCoords);
+        Assert.Empty(labels.Descendants(K + "TimeStamp"));
+        AssertValid(kml);
+    }
+
+    [Fact]
+    public void Planned_MissionInformation_HasTheTimelineTable()
+    {
+        var info = TopFolder(Parse(Planned()), KmlLod.FolderName.MissionInformation).Descendants(K + "description").Single().Value;
+
+        Assert.Contains(TimelineHtml.Heading, info, StringComparison.Ordinal);
+        Assert.Contains("<table", info, StringComparison.Ordinal);
+        Assert.Contains("Stage Separation", info, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -178,8 +242,11 @@ public class DynamicKmlBuilderTests
     {
         var mission = Mission([Starship(
             Path(TrajectoryType.Planned, 3), Path(TrajectoryType.Reconstructed, 3), Path(TrajectoryType.Actual, 3))]);
+        var doc = Parse(Planned(mission: mission));
 
-        Assert.Equal(2, Parse(Planned(mission: mission)).Descendants(K + "LineString").Count());
+        // Once as the path line, once as its curtain (N-39a); the actual path appears in neither.
+        Assert.Equal(2, TopFolder(doc, KmlLod.FolderName.PlannedTrajectory).Descendants(K + "LineString").Count());
+        Assert.Equal(2, TopFolder(doc, KmlLod.FolderName.FlightCurtain).Descendants(K + "LineString").Count());
     }
 
     [Fact]
@@ -427,12 +494,15 @@ public class DynamicKmlBuilderTests
     }
 
     [Fact]
-    public void Planned_LargePaths_StayWithinBudget_AndEachPointIsWrittenOnce()
+    public void Planned_LargePaths_StayWithinBudget_AndEachPointIsWrittenOncePerLayer()
     {
         var kml = Planned(mission: Mission([Starship(Path(TrajectoryType.Planned, 3000)), SuperHeavy(Path(TrajectoryType.Planned, 3000))]));
 
         Assert.True(Encoding.UTF8.GetByteCount(kml) <= PlannedBudgetBytes, $"planned is {Encoding.UTF8.GetByteCount(kml)} bytes");
-        Assert.Equal(6000, Parse(kml).Descendants(K + "LineString").Sum(ls => ls.Element(K + "coordinates")!.Value.Split(' ').Length));
+        // Each point once in the path line and once in its curtain (N-39a toggle layer); nothing else repeats it.
+        var doc = Parse(kml);
+        Assert.Equal(6000, TopFolder(doc, KmlLod.FolderName.PlannedTrajectory).Descendants(K + "coordinates").Sum(c => c.Value.Split(' ').Length));
+        Assert.Equal(12000, doc.Descendants(K + "LineString").Sum(ls => ls.Element(K + "coordinates")!.Value.Split(' ').Length));
     }
 
     [Fact]

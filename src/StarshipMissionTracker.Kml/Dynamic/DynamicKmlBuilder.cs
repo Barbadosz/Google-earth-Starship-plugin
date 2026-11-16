@@ -64,18 +64,26 @@ public sealed class DynamicKmlBuilder : IDynamicKmlBuilder
         var planned = K("Folder",
             K("name", KmlLod.FolderName.PlannedTrajectory),
             K("description", "Planned / Reconstructed – not live telemetry."));
-        foreach (var vehicle in mission.Vehicles.OrderBy(v => v.Type))
+        var vehicles = mission.Vehicles.OrderBy(v => v.Type).ToList();
+        foreach (var vehicle in vehicles)
         {
-            AddPaths(planned, vehicle, vehicle.FlightPaths.Where(p => p.Type != TrajectoryType.Actual), densified);
+            AddPaths(planned, vehicle, vehicle.FlightPaths.Where(IsPlannedPath), densified, extrude: false);
         }
+
+        // N-39a: the curtain of the planned path is its own toggle folder (same paths, no densification note).
+        var curtain = CurtainGenerator.CreateFolder(
+            vehicles.SelectMany(v => v.FlightPaths.Where(IsPlannedPath).Select(p => (v, p))));
 
         var document = K("Document",
             K("name", $"Planned trajectory & events – {info.Name}"),
             K("description", Cdata(SimulatedHtml(info, "Planned / Reconstructed – not live telemetry."))),
             KmlStyles.CreateAll(assets.IconBaseUrl),
+            KmlStyles.CreateToggleStyles(),
             DynamicMissionInfoGenerator.CreateFolder(info, mission, controlUrl),
             planned,
-            DynamicEventGenerator.CreateFolder(mission.Config.Events, mission.Clock));
+            curtain,
+            DynamicEventGenerator.CreateFolder(mission.Config.Events, mission.Clock),
+            EventLabelGenerator.CreateFolder(mission.Config.Events, mission.Clock, timeStamp: false));
         return Serialize(Root(control, document));
     }
 
@@ -97,7 +105,7 @@ public sealed class DynamicKmlBuilder : IDynamicKmlBuilder
         var empty = new HashSet<FlightPath>();
         foreach (var vehicle in vehiclesWithActualPath.OrderBy(v => v.Type))
         {
-            AddPaths(actual, vehicle, vehicle.FlightPaths.Where(p => p.Type == TrajectoryType.Actual), empty);
+            AddPaths(actual, vehicle, vehicle.FlightPaths.Where(p => p.Type == TrajectoryType.Actual), empty, extrude: true);
         }
 
         var document = K("Document",
@@ -130,13 +138,17 @@ public sealed class DynamicKmlBuilder : IDynamicKmlBuilder
         return Serialize(Root(control, document));
     }
 
-    /// <summary>Path Placemarks (one per path) in a vehicle sub-folder; paths without points are skipped, empty vehicles omitted.</summary>
-    private static void AddPaths(XElement parent, Vehicle vehicle, IEnumerable<FlightPath> paths, IReadOnlySet<FlightPath> densified)
+    /// <summary>
+    /// Path Placemarks (one per path) in a vehicle sub-folder; paths without points are skipped, empty vehicles omitted.
+    /// <paramref name="extrude"/> false for planned paths (their curtain is the toggle folder); actual paths stay extruded.
+    /// </summary>
+    private static void AddPaths(
+        XElement parent, Vehicle vehicle, IEnumerable<FlightPath> paths, IReadOnlySet<FlightPath> densified, bool extrude)
     {
         var vehicleFolder = K("Folder", K("name", VehicleFolderName(vehicle.Type)));
         foreach (var path in paths.Where(p => p.Points.Count > 0))
         {
-            var placemark = PlannedPathGenerator.CreatePlacemark(vehicle, path);
+            var placemark = PlannedPathGenerator.CreatePlacemark(vehicle, path, extrude);
             if (densified.Contains(path))
             {
                 var description = placemark.Element(KmlXml.Kml + "description")!;
@@ -156,21 +168,16 @@ public sealed class DynamicKmlBuilder : IDynamicKmlBuilder
         (info.IsSimulated ? $"<p><b>{Html(DynamicMissionInfoGenerator.SimulationNotice)}</b></p>" : string.Empty)
         + $"<p>{Html(text)}</p>";
 
-    /// <summary>Initial view over the launch site; no time element, so a refresh never moves the time slider.</summary>
-    private static XElement? LookAt(MissionInfo info)
-    {
-        if (info.LaunchSite is not { } site)
-        {
-            return null;
-        }
+    /// <summary>
+    /// Initial view over the launch site with <c>gx:TimeStamp</c> = <see cref="MissionInfo.LaunchTimeUtc"/> (simulation
+    /// anchor or planned T0, N-37; the same T0 as every T+ label), so opening the master puts the time slider and the Sun
+    /// at T0 (N-40a). Only the master carries it: the child NetworkLinks use <c>flyToView=0</c>, so a refresh never moves
+    /// the camera or the slider. The master is built per request, so a T0 change shows on the next open.
+    /// </summary>
+    private static XElement? LookAt(MissionInfo info) =>
+        info.LaunchSite is { } site
+            ? MissionLookAt.Create(site.Latitude, site.Longitude, new LaunchClock(info.LaunchTimeUtc))
+            : null;
 
-        return K("LookAt",
-            K("longitude", Degrees(site.Longitude)),
-            K("latitude", Degrees(site.Latitude)),
-            K("altitude", "0"),
-            K("heading", Number(MissionKmlBuilder.InitialViewHeadingDegrees)),
-            K("tilt", Number(MissionKmlBuilder.InitialViewTiltDegrees)),
-            K("range", Number(MissionKmlBuilder.InitialViewRangeMeters)),
-            K("altitudeMode", "absolute"));
-    }
+    private static bool IsPlannedPath(FlightPath path) => path.Type != TrajectoryType.Actual;
 }

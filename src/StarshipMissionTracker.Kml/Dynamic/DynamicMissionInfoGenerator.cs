@@ -18,7 +18,7 @@ internal static class DynamicMissionInfoGenerator
     {
         var placemark = K("Placemark",
             K("name", info.Name),
-            K("description", Cdata(DescriptionHtml(info, mission, controlUrl))));
+            K("description", Cdata(DescriptionHtml(info, mission, controlUrl) + TimelineHtml.Create(mission.Config.Events))));
         if (LaunchSite(info, mission) is { } site)
         {
             placemark.Add(K("Point",

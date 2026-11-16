@@ -325,7 +325,7 @@ public class M2KmlDataAttackTests
         }
     }
 
-    [Fact(Skip = "M2-ATTACK-3: shutdown or crash mid-run leaves the mission InFlight with an actual launch time and no run")]
+    [Fact]
     public async Task ServerKilledMidRun_NextStartup_DoesNotShowAnInFlightMissionWithoutARun()
     {
         var copy = Path.Combine(Path.GetTempPath(), "starship-attack-" + Guid.NewGuid().ToString("N"), "starship.db");

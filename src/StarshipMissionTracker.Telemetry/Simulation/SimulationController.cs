@@ -519,6 +519,50 @@ public sealed class SimulationController : ISimulationControl
         }
     }
 
+    /// <summary>
+    /// Startup recovery (N-45): a crash or kill mid-run leaves a mission InFlight with an actual launch time although no run
+    /// exists. Resets every such simulated mission like a normal Stop of an interrupted run (Scheduled, no actual launch
+    /// time; the anchor is kept when samples exist, cleared otherwise). Non-simulated missions are never touched. Runs under
+    /// <c>_opLock</c> so list-then-write is atomic with Start and the T0 edit. Best effort: failures are logged per mission,
+    /// never thrown. Must run before auto-start.
+    /// </summary>
+    public async Task RecoverOrphanedMissionsAsync(CancellationToken cancellationToken = default)
+    {
+        await _opLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var missions = scope.ServiceProvider.GetRequiredService<IMissionRepository>();
+            var telemetry = scope.ServiceProvider.GetRequiredService<ITelemetryRepository>();
+            var all = await missions.ListAsync(cancellationToken).ConfigureAwait(false);
+            foreach (var mission in all.Where(m => m.Status == MissionStatus.InFlight && m.IsSimulated))
+            {
+                try
+                {
+                    var samples = await telemetry.GetSamplesAsync(mission.MissionCode, null, null, 1, cancellationToken).ConfigureAwait(false);
+                    var hasSamples = samples.Count > 0;
+                    _logger.LogWarning(
+                        "Mission {MissionCode} was InFlight without a run (unclean shutdown); resetting to Scheduled (samples kept: {HasSamples})",
+                        mission.MissionCode, hasSamples);
+                    await SetStateAsync(missions, mission.MissionCode, MissionStatus.Scheduled, null, null, clearActual: true, clearAnchor: !hasSamples, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger.LogError(ex, "Could not reset orphaned InFlight mission {MissionCode} at startup", mission.MissionCode);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "Could not reset orphaned InFlight missions at startup");
+        }
+        finally
+        {
+            _opLock.Release();
+        }
+    }
+
     private KeyNotFoundException UnknownMission(string missionCode)
     {
         _logger.LogWarning("Start rejected: unknown mission {MissionCode}", missionCode);

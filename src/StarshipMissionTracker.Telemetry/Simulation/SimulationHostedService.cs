@@ -35,6 +35,7 @@ public sealed class SimulationHostedService : BackgroundService
     {
         try
         {
+            await _controller.RecoverOrphanedMissionsAsync(stoppingToken).ConfigureAwait(false);
             await AutoStartAsync(stoppingToken).ConfigureAwait(false);
 
             using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(_options.TickMilliseconds), _timeProvider);

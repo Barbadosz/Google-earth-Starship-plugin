@@ -1,5 +1,7 @@
 # Google Earth Pro check for M1 (manual)
 
+The live server check (M2) is in [ge-ellenorzes-m2.md](ge-ellenorzes-m2.md).
+
 This is the manual part of the M1 Definition of Done. The automated tests check the XML, the structure and the
 numbers. Only you can check what Google Earth Pro (GE Pro) really shows.
 

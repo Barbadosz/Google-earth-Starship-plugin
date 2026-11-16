@@ -4,7 +4,12 @@ A .NET tool that builds a **Google Earth Pro KMZ** for a Starship flight: planne
 Super Heavy), 3D models, navigation icons and mission events on the Google Earth time slider. The launch time (T0) is
 a setting, so a slipped launch only needs one changed value.
 
-This is milestone M1 (a static KMZ built by a command line tool). A backend and a database come later.
+The project has two parts:
+
+- **M1 - KMZ command line tool.** Builds a static KMZ file you open in Google Earth Pro.
+- **M2 - local server.** An ASP.NET Core server with a SQLite database that serves the same mission as live-updating
+  KML (Google Earth Network Links). There is no real telemetry source yet: the position is **simulated** by replaying
+  the planned path at a chosen speed. The server only listens on this computer (loopback).
 
 ## Disclaimer
 
@@ -28,7 +33,72 @@ dotnet run --project src/StarshipMissionTracker.Cli -- --mission demo-ift --laun
 
 Run the commands from the repository root. The result is `output/demo-ift.kmz`; open it in Google Earth Pro.
 
-## Command line options
+## Local server (M2)
+
+### Start
+
+```
+dotnet run --project src/StarshipMissionTracker.Api
+```
+
+Run it from the repository root. The server listens on `http://127.0.0.1:8080` and **only on loopback**: it refuses
+to start with a listen address that is not loopback, and the endpoints that change something are not available from
+other computers (see [HTTP API](docs/api.md)). On start it creates or migrates the SQLite database
+(`data/starship.db`) and imports the missions from `data/missions`. Logs go to the console and to `logs/`.
+
+> **Warning (development).** `appsettings.Development.json` turns `Simulation:AutoStart` on. With `dotnet run`
+> (Development environment) every start therefore begins a simulation of `demo-ift` and writes **simulated samples
+> into the real `data/starship.db`**. Set `Simulation:AutoStart` to `false` (or run in another environment) if you
+> do not want that. Simulated samples are always labelled `Simulated`.
+
+### Control page
+
+Open <http://127.0.0.1:8080/control> in a browser. It shows the simulation state, T+ and the mission time, and has the
+Start, Stop and Pause/Resume buttons and the speed slider.
+
+- **Start** begins a countdown (default 10 s, a field on the page), then the vehicles move along the planned path.
+- **Pause** freezes the mission time, **Resume** continues. Pause is not possible during the countdown.
+- **Speed** changes immediately (during the countdown it applies from liftoff). The slider has the steps
+  0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 50 and 100 times real time, see [Simulator](docs/simulator.md).
+- **Stop** ends the run (an interrupted run goes back to `Scheduled`).
+
+Only one run is active at a time; a second Start while one is active is refused (409).
+
+### Google Earth Pro: Network Link
+
+1. Start the server and make sure the control page opens.
+2. In Google Earth Pro choose **Add > Network Link**.
+3. Name: anything, for example `Starship (local)`. Link: `http://127.0.0.1:8080/kml/master`.
+4. Press OK. Google Earth loads the master document and flies to the launch site with the time slider at T0.
+5. The master holds three links that refresh themselves: planned trajectory and events (60 s), actual trajectory so
+   far (15 s) and the vehicles at their latest sample (5 s).
+6. Start a simulation on the control page and watch the vehicles move. The "Flight path curtain" and "Event labels"
+   folders can be switched off with their checkboxes.
+
+Google Earth reads the refresh intervals when the link is loaded, so after changing them in `appsettings.json`
+reload the link. Details: [KML server](docs/kml-server.md).
+
+### Changing the launch time (T0)
+
+The planned T0 of a mission is changed with `PUT /api/missions/{code}/launch-time`, for example:
+
+```
+curl -X PUT -H "Content-Type: application/json" -d '{"launchTimeUtc":"2026-12-01T23:30:00Z"}' http://127.0.0.1:8080/api/missions/demo-ift/launch-time
+```
+
+It is only allowed while no run of that mission is active (state Idle or Completed). During a countdown or a run
+(also while paused) the answer is `409`: stop the simulation first. A successful change also resets the simulation
+anchor and deletes the simulated samples of that mission, so the next run starts clean. Google Earth shows the new T0
+the next time the master or planned link is loaded or refreshed.
+
+### Server documentation
+
+- [HTTP API](docs/api.md)
+- [KML server (master, Network Links, toggles)](docs/kml-server.md)
+- [Simulator](docs/simulator.md)
+- [Data model](docs/DATAMODEL.md)
+
+## Command line options (M1)
 
 ```
 StarshipMissionTracker.Cli --mission <code> [--launch-time <T0>] [--data <dir>] [--assets <dir>] [--output <dir>]
@@ -55,7 +125,8 @@ data/trajectories/<code>-<vehicle>-planned.json   planned trajectory points (T+ 
 assets/models, assets/icons          placeholder 3D models (.dae) and icons (.png)
 output/<code>.kmz                    generated KMZ (not committed)
 logs/                                log files (not committed)
-src/                                 Core, Trajectory, Kml, Cli
+data/starship.db                     SQLite database of the server (not committed)
+src/                                 Core, Trajectory, Kml, Cli, Data, Telemetry, Api
 tests/                               xUnit tests
 docs/                                documentation
 ```
@@ -64,6 +135,10 @@ The KMZ contains `doc.kml` and the models and icons under `files/`.
 
 ## Documentation
 
+- [HTTP API](docs/api.md)
+- [KML server](docs/kml-server.md)
+- [Simulator](docs/simulator.md)
+- [Data model](docs/DATAMODEL.md)
 - [Google Earth Pro check (manual)](docs/ge-ellenorzes.md)
 - [Data sources and data quality](docs/data-sources.md)
 - [Calculation assumptions](docs/calculations.md)

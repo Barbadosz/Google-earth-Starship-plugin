@@ -25,7 +25,7 @@ Not needed in M1. Data model: spec chapter 7 (`alapleírás.md`) + `ai/tervezo/t
 - `double` for coordinates/altitude; no `decimal` aggregates.
 - Enums as strings (`HasConversion<string>()`): `DataQuality`, `EventType`, `VehicleType`, `TrajectoryType`.
 - Limited `ALTER TABLE`: EF rebuilds tables in migrations; care with data.
-- Index `(MissionId, Timestamp)` / `(MissionId, OffsetSeconds)` on `TelemetrySamples`; foreign keys on by default.
+- Unique index `(VehicleId, TimestampUtc)` on `TelemetrySamples`; `(MissionId, OffsetSeconds)` on events; foreign keys on by default. Current schema: `docs/DATAMODEL.md`.
 - Bulk: `AddRange` + one `SaveChanges`; never per point.
 - Provenance: raw source payloads unchanged; processed rows keep `SourceId`, `DataQuality`.
 

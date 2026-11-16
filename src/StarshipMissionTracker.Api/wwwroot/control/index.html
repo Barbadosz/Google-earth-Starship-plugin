@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Starship simulation control</title>
+  <link rel="stylesheet" href="control.css">
+</head>
+<body>
+  <main>
+    <h1>Starship simulation control &ndash; SIMULATED data</h1>
+
+    <section aria-label="Status">
+      <p id="status-line" class="status" aria-live="polite">Connecting&hellip;</p>
+      <dl class="facts">
+        <div><dt>State</dt><dd id="f-state">-</dd></div>
+        <div><dt>Mission</dt><dd id="f-mission">-</dd></div>
+        <div><dt>T+</dt><dd id="f-t" class="mono">-</dd></div>
+        <div><dt>Mission time (UTC)</dt><dd id="f-utc" class="mono">-</dd></div>
+        <div><dt>Speed</dt><dd id="f-speed">-</dd></div>
+      </dl>
+      <span id="badge-paused" class="badge" hidden>PAUSED</span>
+    </section>
+
+    <section aria-label="Speed">
+      <label for="speed">Speed: <output id="speed-label" for="speed">1&times; = real time</output></label>
+      <input id="speed" type="range" min="0" max="9" step="1" value="3" disabled aria-valuetext="1 times real time">
+      <p id="jump-hint" class="hint"></p>
+      <button id="btn-pause" type="button" disabled>Pause</button>
+    </section>
+
+    <section aria-label="Start and stop">
+      <label for="in-mission">Mission code</label>
+      <input id="in-mission" type="text" value="demo-ift" autocomplete="off">
+      <label for="in-countdown">Countdown (s)</label>
+      <input id="in-countdown" type="number" min="0" step="1" value="10">
+      <div class="row">
+        <button id="btn-start" type="button">Start</button>
+        <button id="btn-stop" type="button" disabled>Stop</button>
+      </div>
+    </section>
+
+    <p id="error-line" class="error" role="alert"></p>
+  </main>
+  <script src="control.js"></script>
+</body>
+</html>

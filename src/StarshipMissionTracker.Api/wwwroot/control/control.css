@@ -1,0 +1,20 @@
+body { font-family: system-ui, Arial, sans-serif; background: #10141a; color: #e8ecf1; margin: 0; }
+main { max-width: 40rem; margin: 0 auto; padding: 1rem; }
+h1 { font-size: 1.3rem; }
+section { margin: 1.2rem 0; padding: 0.8rem; border: 1px solid #3a4452; border-radius: 6px; }
+.status { font-weight: bold; margin: 0 0 0.6rem; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 0.5rem; margin: 0; }
+.facts dt { font-size: 0.8rem; color: #aab4c0; }
+.facts dd { margin: 0; font-size: 1.1rem; }
+.mono { font-family: Consolas, monospace; }
+.badge { display: inline-block; margin-top: 0.6rem; padding: 0.1rem 0.6rem; background: #ffd24a; color: #000; font-weight: bold; border-radius: 4px; }
+.badge[hidden] { display: none; }
+label { display: block; margin: 0.5rem 0 0.2rem; }
+input[type=range] { width: 100%; }
+input[type=text], input[type=number] { padding: 0.3rem; background: #1b222c; color: inherit; border: 1px solid #5a6676; border-radius: 4px; }
+.hint { color: #aab4c0; font-size: 0.9rem; }
+.row { margin-top: 0.8rem; }
+button { padding: 0.5rem 1.2rem; margin-right: 0.5rem; font-size: 1rem; background: #2c6fd1; color: #fff; border: 0; border-radius: 4px; cursor: pointer; }
+button:disabled { background: #3a4452; color: #8d97a3; cursor: not-allowed; }
+:focus-visible { outline: 3px solid #ffd24a; outline-offset: 2px; }
+.error { color: #ff8a80; min-height: 1.4em; font-weight: bold; }

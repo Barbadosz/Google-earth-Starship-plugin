@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using StarshipMissionTracker.Core.Enums;
+using StarshipMissionTracker.Core.Exceptions;
 using StarshipMissionTracker.Core.Models;
 using StarshipMissionTracker.Telemetry.Simulation;
 using StarshipMissionTracker.Telemetry.Tests.Support;
@@ -151,7 +152,7 @@ public class SimulationControllerTests
     {
         var rig = new TestData.Rig();
         await rig.Start(countdown: 10);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => rig.Controller.PauseAsync(Ct));
+        await Assert.ThrowsAsync<SimulationStateException>(() => rig.Controller.PauseAsync(Ct));
         Assert.False(rig.Controller.GetStatus().IsPaused);
     }
 
@@ -170,23 +171,23 @@ public class SimulationControllerTests
     public async Task WrongStateCalls_AreRejected()
     {
         var rig = new TestData.Rig();
-        await Assert.ThrowsAsync<InvalidOperationException>(() => rig.Controller.SetSpeedAsync(5, Ct));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => rig.Controller.PauseAsync(Ct));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => rig.Controller.ResumeAsync(Ct));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => rig.Controller.StopAsync(Ct));
+        await Assert.ThrowsAsync<SimulationStateException>(() => rig.Controller.SetSpeedAsync(5, Ct));
+        await Assert.ThrowsAsync<SimulationStateException>(() => rig.Controller.PauseAsync(Ct));
+        await Assert.ThrowsAsync<SimulationStateException>(() => rig.Controller.ResumeAsync(Ct));
+        await Assert.ThrowsAsync<SimulationStateException>(() => rig.Controller.StopAsync(Ct));
 
         await rig.Start(countdown: 0);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => rig.Controller.ResumeAsync(Ct)); // not paused
-        await Assert.ThrowsAsync<InvalidOperationException>(() => rig.Start()); // already running
+        await Assert.ThrowsAsync<SimulationStateException>(() => rig.Controller.ResumeAsync(Ct)); // not paused
+        await Assert.ThrowsAsync<SimulationStateException>(() => rig.Start()); // already running
         await rig.Controller.PauseAsync(Ct);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => rig.Controller.PauseAsync(Ct)); // already paused
+        await Assert.ThrowsAsync<SimulationStateException>(() => rig.Controller.PauseAsync(Ct)); // already paused
         await rig.Controller.ResumeAsync(Ct);
 
         await rig.Run(30);
         Assert.Equal(SimulationState.Completed, rig.Controller.GetStatus().State);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => rig.Controller.SetSpeedAsync(5, Ct));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => rig.Controller.PauseAsync(Ct));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => rig.Controller.ResumeAsync(Ct));
+        await Assert.ThrowsAsync<SimulationStateException>(() => rig.Controller.SetSpeedAsync(5, Ct));
+        await Assert.ThrowsAsync<SimulationStateException>(() => rig.Controller.PauseAsync(Ct));
+        await Assert.ThrowsAsync<SimulationStateException>(() => rig.Controller.ResumeAsync(Ct));
     }
 
     [Theory]
@@ -268,7 +269,7 @@ public class SimulationControllerTests
         Assert.Equal(SimulationState.Idle, rig.Controller.GetStatus().State);
 
         var real = new TestData.Rig(simulated: false);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => real.Start());
+        await Assert.ThrowsAsync<SimulationStateException>(() => real.Start());
         Assert.Equal(0, real.Telemetry.DeleteCalls);
     }
 

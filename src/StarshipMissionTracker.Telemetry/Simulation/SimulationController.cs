@@ -3,6 +3,7 @@ using System.Globalization;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using StarshipMissionTracker.Core.Enums;
+using StarshipMissionTracker.Core.Exceptions;
 using StarshipMissionTracker.Core.Interfaces;
 using StarshipMissionTracker.Core.Models;
 using StarshipMissionTracker.Telemetry.Validation;
@@ -16,7 +17,7 @@ namespace StarshipMissionTracker.Telemetry.Simulation;
 /// them, so the synchronous <see cref="GetStatus"/> never waits for the database and always sees a consistent snapshot.
 /// Log calls made while the state changes are deferred and written after <c>_stateLock</c> is released.
 /// Errors per the contract: bad speed -> <see cref="ArgumentOutOfRangeException"/>, wrong state ->
-/// <see cref="InvalidOperationException"/>, unknown mission -> <see cref="KeyNotFoundException"/>.
+/// <see cref="SimulationStateException"/>, unknown mission -> <see cref="KeyNotFoundException"/>.
 /// </summary>
 public sealed class SimulationController : ISimulationControl
 {
@@ -77,7 +78,7 @@ public sealed class SimulationController : ISimulationControl
     }
 
     /// <exception cref="KeyNotFoundException">Unknown mission code.</exception>
-    /// <exception cref="InvalidOperationException">A simulation is already running, or the mission is not simulated.</exception>
+    /// <exception cref="SimulationStateException">A simulation is already running, or the mission is not simulated.</exception>
     public async Task<SimulationStatus> StartAsync(SimulationStartRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -146,7 +147,7 @@ public sealed class SimulationController : ISimulationControl
         }
     }
 
-    /// <exception cref="InvalidOperationException">No simulation to stop.</exception>
+    /// <exception cref="SimulationStateException">No simulation to stop.</exception>
     public async Task<SimulationStatus> StopAsync(CancellationToken cancellationToken = default)
     {
         await _opLock.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -196,7 +197,7 @@ public sealed class SimulationController : ISimulationControl
     }
 
     /// <exception cref="ArgumentOutOfRangeException">Speed outside <see cref="SimulationSpeedLimits"/>.</exception>
-    /// <exception cref="InvalidOperationException">Not in Countdown or Running.</exception>
+    /// <exception cref="SimulationStateException">Not in Countdown or Running.</exception>
     public async Task<SimulationStatus> SetSpeedAsync(double speed, CancellationToken cancellationToken = default)
     {
         if (!SimulationSpeedLimits.IsValid(speed))
@@ -237,7 +238,7 @@ public sealed class SimulationController : ISimulationControl
         }
     }
 
-    /// <exception cref="InvalidOperationException">Not running, or already paused.</exception>
+    /// <exception cref="SimulationStateException">Not running, or already paused.</exception>
     public async Task<SimulationStatus> PauseAsync(CancellationToken cancellationToken = default)
     {
         await _opLock.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -270,7 +271,7 @@ public sealed class SimulationController : ISimulationControl
         }
     }
 
-    /// <exception cref="InvalidOperationException">Not running, or not paused.</exception>
+    /// <exception cref="SimulationStateException">Not running, or not paused.</exception>
     public async Task<SimulationStatus> ResumeAsync(CancellationToken cancellationToken = default)
     {
         await _opLock.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -291,6 +292,40 @@ public sealed class SimulationController : ISimulationControl
                 log.Add(() => _logger.LogInformation("Simulation resumed at T{Offset:+0.###;-0.###} s", offset));
                 return BuildStatus(now);
             });
+        }
+        finally
+        {
+            _opLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Runs <paramref name="action"/> under <c>_opLock</c> (so a concurrent Start, Stop or tick waits for it) when no run
+    /// of <paramref name="missionCode"/> is in Countdown or Running. A Completed run or a run of another mission does not block.
+    /// </summary>
+    /// <exception cref="SimulationStateException">A run of <paramref name="missionCode"/> is active (paused included).</exception>
+    public async Task<T> RunWhileInactiveAsync<T>(string missionCode, Func<CancellationToken, Task<T>> action, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(missionCode);
+        ArgumentNullException.ThrowIfNull(action);
+        await _opLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var now = _timeProvider.GetUtcNow();
+            WithStateDo(log =>
+            {
+                Refresh(now, log);
+                if (_state is SimulationState.Countdown or SimulationState.Running
+                    && _runner is { } runner
+                    && string.Equals(runner.MissionCode, missionCode, StringComparison.OrdinalIgnoreCase))
+                {
+                    var what = runner.Clock.IsPaused ? "paused" : _state.ToString();
+                    Reject(log, $"A simulation of '{runner.MissionCode}' is {what}; stop it before changing the mission");
+                }
+            });
+
+            _logger.LogDebug("Running a change of mission {MissionCode} while its simulation is inactive", missionCode);
+            return await action(cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -581,7 +616,7 @@ public sealed class SimulationController : ISimulationControl
     private void Reject(List<Action> log, string message)
     {
         log.Add(() => _logger.LogWarning("{Message}", message));
-        throw new InvalidOperationException(message);
+        throw new SimulationStateException(message);
     }
 
     /// <summary>Rejects outside the state lock.</summary>
@@ -589,6 +624,6 @@ public sealed class SimulationController : ISimulationControl
     private void Reject(string message)
     {
         _logger.LogWarning("{Message}", message);
-        throw new InvalidOperationException(message);
+        throw new SimulationStateException(message);
     }
 }

@@ -86,6 +86,8 @@ public class ContentRootAndBindingTests
     [Theory]
     [InlineData("Kestrel:Endpoints:Public:Url", "http://0.0.0.0:9090")]
     [InlineData("urls", "http://192.168.1.10:8080")]
+    // ASPNETCORE_URLS reaches the app as the same "urls" setting; injected here instead of a process-wide env var (N-52).
+    [InlineData("urls", "http://0.0.0.0:8080")]
     public async Task NonLoopbackOverrides_AreRejectedAtStartup(string key, string value)
     {
         await using var factory = new StarshipAppFactory(new Dictionary<string, string?> { [key] = value });
@@ -93,25 +95,6 @@ public class ContentRootAndBindingTests
         var ex = Assert.ThrowsAny<Exception>(() => factory.CreateClient());
 
         Assert.Contains("loopback", ex.ToString(), StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public async Task EnvironmentUrls_NonLoopback_AreRejectedAtStartup()
-    {
-        // ASPNETCORE_URLS is read into the "urls" setting by the host configuration; set it only for this host build.
-        const string variable = "ASPNETCORE_URLS";
-        var previous = Environment.GetEnvironmentVariable(variable);
-        Environment.SetEnvironmentVariable(variable, "http://0.0.0.0:8080");
-        try
-        {
-            await using var factory = new StarshipAppFactory();
-            var ex = Assert.ThrowsAny<Exception>(() => factory.CreateClient());
-            Assert.Contains("loopback", ex.ToString(), StringComparison.OrdinalIgnoreCase);
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable(variable, previous);
-        }
     }
 
     [Theory]

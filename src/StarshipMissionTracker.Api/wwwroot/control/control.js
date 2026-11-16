@@ -4,7 +4,7 @@
 
   var PRESETS = [0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 50, 100];
   var POLL_MS = 1000;
-  var LIVE_REFRESH_S = 5; // Google Earth live KML refresh interval
+  var LIVE_REFRESH_S = 1; // Google Earth live KML refresh interval
   var API = '/api/simulation';
 
   function $(id) { return document.getElementById(id); }

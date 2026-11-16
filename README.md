@@ -68,15 +68,15 @@ Only one run is active at a time; a second Start while one is active is refused 
 
 1. Start the server and make sure the control page opens.
 2. In Google Earth Pro choose **Add > Network Link**.
-3. Name: anything, for example `Starship (local)`. Link: `http://127.0.0.1:8080/kml/master`.
+3. Name: anything, for example `Starship (local)`. Link: `http://127.0.0.1:8080/kml/master`. Do not open `output/demo-ift.kmz` for this: that static file never refreshes. With `dotnet run` (Development) a `demo-ift` run auto-starts; to start by hand set `$env:Simulation__AutoStart="false"` first (PowerShell). A Start during an active run answers 409.
 4. Press OK. Google Earth loads the master document and flies to the launch site with the time slider at T0.
 5. The master holds three links that refresh themselves: planned trajectory and events (60 s), actual trajectory so
-   far (15 s) and the vehicles at their latest sample (5 s).
+   far (1 s) and the vehicles at their latest sample (1 s).
 6. Start a simulation on the control page and watch the vehicles move. The "Flight path curtain" and "Event labels"
    folders can be switched off with their checkboxes.
 
-Google Earth reads the refresh intervals when the link is loaded, so after changing them in `appsettings.json`
-reload the link. Details: [KML server](docs/kml-server.md).
+Google Earth takes the refresh intervals from the master, only when the link is loaded, so after changing them in `appsettings.json`
+refresh the master link (right-click > Refresh; not verified in GE: if the new intervals do not appear, remove and re-add the Network Link). Details: [KML server](docs/kml-server.md).
 
 ### Changing the launch time (T0)
 

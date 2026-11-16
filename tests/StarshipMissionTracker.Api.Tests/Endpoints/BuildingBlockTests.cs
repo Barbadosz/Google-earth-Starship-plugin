@@ -59,16 +59,16 @@ public class BuildingBlockTests
         Assert.Null(options.Validate());
         var settings = options.ToSettings();
         Assert.Equal(TimeSpan.FromSeconds(60), settings.PlannedRefresh);
-        Assert.Equal(TimeSpan.FromSeconds(15), settings.HistoryRefresh);
-        Assert.Equal(TimeSpan.FromSeconds(5), settings.LiveRefresh);
-        Assert.Equal(TimeSpan.FromSeconds(2), settings.MinRefreshPeriod);
+        Assert.Equal(TimeSpan.FromSeconds(1), settings.HistoryRefresh);
+        Assert.Equal(TimeSpan.FromSeconds(1), settings.LiveRefresh);
+        Assert.Equal(TimeSpan.FromSeconds(1), settings.MinRefreshPeriod);
     }
 
     [Theory]
-    [InlineData(5, 2, null)]
-    [InlineData(1, 2, "MinRefreshPeriodSeconds")]
-    [InlineData(0, 2, "LiveRefreshSeconds")]
-    [InlineData(double.NaN, 2, "LiveRefreshSeconds")]
+    [InlineData(5, 1, null)]
+    [InlineData(0.5, 1, "MinRefreshPeriodSeconds")]
+    [InlineData(0, 1, "LiveRefreshSeconds")]
+    [InlineData(double.NaN, 1, "LiveRefreshSeconds")]
     [InlineData(5, 0, "MinRefreshPeriodSeconds")]
     public void NetworkLinkOptions_Validate(double live, double min, string? expectedFragment)
     {
@@ -104,7 +104,7 @@ public class BuildingBlockTests
 
     [Theory]
     [InlineData("Live:StaleAfterSeconds", "5")]
-    [InlineData("NetworkLinks:LiveRefreshSeconds", "1")]
+    [InlineData("NetworkLinks:LiveRefreshSeconds", "0.5")]
     [InlineData("History:MaxPointsPerVehicle", "1")]
     public async Task InvalidOptions_FailAtStartup(string key, string value)
     {

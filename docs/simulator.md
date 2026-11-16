@@ -50,23 +50,23 @@ The status JSON of every call is described in [api.md](api.md).
 ## Speed presets and jump size (control page)
 
 The control page slider has ten steps. The hint under it says how much flight time passes per Google Earth refresh of
-the live link (5 s, the default `NetworkLinks:LiveRefreshSeconds`): `speed * 5` seconds of flight per refresh, that is
+the live link (1 s, the default `NetworkLinks:LiveRefreshSeconds`): `speed * 1` seconds of flight per refresh, that is
 how far a vehicle jumps between two updates in Google Earth.
 
-| Speed | Flight time per 5 s refresh |
+| Speed | Flight time per 1 s refresh |
 |---|---|
-| 0.1x | 0.5 s |
-| 0.25x | 1.25 s |
-| 0.5x | 2.5 s |
-| 1x (real time) | 5 s |
-| 2x | 10 s |
-| 5x | 25 s |
-| 10x | 50 s |
-| 20x | 100 s |
-| 50x | 250 s |
-| 100x | 500 s |
+| 0.1x | 0.1 s |
+| 0.25x | 0.25 s |
+| 0.5x | 0.5 s |
+| 1x (real time) | 1 s |
+| 2x | 2 s |
+| 5x | 5 s |
+| 10x | 10 s |
+| 20x | 20 s |
+| 50x | 50 s |
+| 100x | 100 s |
 
-The page's refresh value is a fixed 5 s in the script; if you change `NetworkLinks:LiveRefreshSeconds`, the real jump
+The page's refresh value is a fixed 1 s (`LIVE_REFRESH_S`) in the script; if you change `NetworkLinks:LiveRefreshSeconds`, the real jump
 size changes but the hint does not. The status JSON also gives `speedMin` and `speedMax` (0.1 and 100).
 
 ## Pause and the stale rule

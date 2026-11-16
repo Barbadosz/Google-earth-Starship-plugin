@@ -10,8 +10,8 @@ planned data, not from telemetry ([simulator.md](simulator.md)).
 ```
 /kml/master?mission=<code>
   NetworkLink planned-link   -> /kml/planned?mission=<code>   refresh 60 s
-  NetworkLink history-link   -> /kml/history?mission=<code>   refresh 15 s
-  NetworkLink live-link      -> /kml/live?mission=<code>      refresh 5 s
+  NetworkLink history-link   -> /kml/history?mission=<code>   refresh 1 s
+  NetworkLink live-link      -> /kml/live?mission=<code>      refresh 1 s
 ```
 
 The master only holds the three links, a description (with the SIMULATED notice for a simulated mission) and the
@@ -37,11 +37,14 @@ Configuration section `NetworkLinks` in `appsettings.json` (seconds, each in (0,
 | Key | Default | Meaning |
 |---|---|---|
 | `PlannedRefreshSeconds` | 60 | Interval of the planned link. |
-| `HistoryRefreshSeconds` | 15 | Interval of the history link. |
-| `LiveRefreshSeconds` | 5 | Interval of the live link. |
-| `MinRefreshPeriodSeconds` | 2 | `minRefreshPeriod` in every child document's NetworkLinkControl; no interval may be smaller. |
+| `HistoryRefreshSeconds` | 1 | Interval of the history link. |
+| `LiveRefreshSeconds` | 1 | Interval of the live link. |
+| `MinRefreshPeriodSeconds` | 1 | `minRefreshPeriod` in every child document's NetworkLinkControl; no interval may be smaller. |
 
-Google Earth Pro reads the intervals from the master only when the link is loaded; after a change, reload the link.
+Google Earth Pro takes the intervals from the master, and only when the master link is loaded. After changing them, refresh the master link (right-click > Refresh; not verified in GE: if the new intervals do not appear, remove and re-add the Network Link); the running child links keep their old interval.
+
+Cost of a 1 s refresh (N-48): the live document is about 3-7 KB. The history document grows with the samples, capped by `History:MaxPointsPerVehicle` (2000 per vehicle): measured about 29 bytes per point (a 1340-point diagnosis sample was 44 KB, 13.6 KB gzipped), so a full `demo-ift` run with two vehicles at the cap is roughly 130 KB raw and about 40 KB gzipped. The history document is built per request (no caching, `no-store`), reading the samples from the local SQLite database; this is cheap on one machine. If it ever becomes heavy, raise `HistoryRefreshSeconds`.
+
 `Live:StaleAfterSeconds` (default 15) and `History:MaxPointsPerVehicle` are separate sections. Invalid values stop the
 server at start with a message.
 

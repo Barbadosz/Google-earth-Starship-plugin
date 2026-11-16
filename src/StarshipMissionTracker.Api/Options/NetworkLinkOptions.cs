@@ -12,11 +12,11 @@ public sealed class NetworkLinkOptions
 
     public double PlannedRefreshSeconds { get; set; } = 60;
 
-    public double HistoryRefreshSeconds { get; set; } = 15;
+    public double HistoryRefreshSeconds { get; set; } = 1;
 
-    public double LiveRefreshSeconds { get; set; } = 5;
+    public double LiveRefreshSeconds { get; set; } = 1;
 
-    public double MinRefreshPeriodSeconds { get; set; } = 2;
+    public double MinRefreshPeriodSeconds { get; set; } = 1;
 
     /// <summary>Null when valid, else the reason (for <c>Validate(...)</c> + <c>ValidateOnStart</c>).</summary>
     public string? Validate()

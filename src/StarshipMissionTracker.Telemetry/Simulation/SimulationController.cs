@@ -38,9 +38,9 @@ public sealed class SimulationController : ISimulationControl
     private string? _reason;
     private bool _pendingInFlight;
     private bool _pendingCompleted;
-    private DateTimeOffset? _originalPlanned;
     private double? _finalOffsetSeconds;
     private int _failures;
+    private bool _wroteSamples;
 
     /// <exception cref="ArgumentException">An option is out of range (no silent fallbacks).</exception>
     public SimulationController(
@@ -96,7 +96,6 @@ public sealed class SimulationController : ISimulationControl
 
             using var scope = _scopeFactory.CreateScope();
             var missions = scope.ServiceProvider.GetRequiredService<IMissionRepository>();
-            var telemetry = scope.ServiceProvider.GetRequiredService<ITelemetryRepository>();
 
             var info = await missions.GetInfoAsync(request.MissionCode, cancellationToken).ConfigureAwait(false)
                        ?? throw UnknownMission(request.MissionCode);
@@ -110,22 +109,15 @@ public sealed class SimulationController : ISimulationControl
 
             var wallLaunch = now + TimeSpan.FromTicks((long)Math.Round(request.CountdownSeconds * TimeSpan.TicksPerSecond));
             var runner = new SimulationRunner(mission, wallLaunch, request.Speed, _options.SampleIntervalSeconds);
-            var originalPlanned = info.PlannedLaunchTimeUtc;
 
-            // Status first, then the delete: if the status write fails nothing was touched (old samples stay); if the
-            // delete fails afterwards the status is rolled back (best effort, logged) so no half-started run is left behind.
-            await SetStateAsync(missions, request.MissionCode, MissionStatus.Scheduled, null, wallLaunch, cancellationToken).ConfigureAwait(false);
-            int deleted;
-            try
+            // The planned T0 is never written here: the run gets its own anchor (SimulationLaunchTimeUtc), which is the
+            // time axis of the samples it stores. One repository transaction sets Scheduled + the anchor, clears a stale
+            // ActualLaunchTimeUtc (e.g. left by a crash) and deletes the old simulated samples. If it throws, nothing was
+            // changed (a previous Completed result stays intact) and the controller keeps its state.
+            var found = await missions.BeginSimulationRunAsync(request.MissionCode, wallLaunch, cancellationToken).ConfigureAwait(false);
+            if (!found)
             {
-                deleted = await telemetry.DeleteSimulatedAsync(request.MissionCode, cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(
-                    ex, "Start failed while deleting the old simulated samples of mission {MissionCode}; restoring the planned launch time", request.MissionCode);
-                await TryResetStatusAsync(request.MissionCode, originalPlanned).ConfigureAwait(false);
-                throw;
+                _logger.LogWarning("Simulation run was not stored: mission {MissionCode} is unknown to the repository", request.MissionCode);
             }
 
             WithStateDo(log =>
@@ -135,17 +127,17 @@ public sealed class SimulationController : ISimulationControl
                 _reason = null;
                 _pendingInFlight = false;
                 _pendingCompleted = false;
-                _originalPlanned = originalPlanned;
                 _finalOffsetSeconds = null;
                 _failures = 0;
+                _wroteSamples = false;
                 _lastTimestamps.Clear();
                 _idleSpeed = request.Speed;
                 Refresh(now, log);
             });
 
             _logger.LogInformation(
-                "Simulation started: mission {MissionCode}, speed {Speed}x, countdown {Countdown} s, T0 {LaunchTimeUtc:O}, deleted {Deleted} old simulated samples",
-                request.MissionCode, request.Speed, request.CountdownSeconds, wallLaunch, deleted);
+                "Simulation started: mission {MissionCode}, speed {Speed}x, countdown {Countdown} s, T0 {LaunchTimeUtc:O}",
+                request.MissionCode, request.Speed, request.CountdownSeconds, wallLaunch);
             return GetStatus();
         }
         finally
@@ -160,7 +152,7 @@ public sealed class SimulationController : ISimulationControl
         await _opLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var (missionCode, previous, original) = WithState(log =>
+            var (missionCode, previous, anchor, wrote) = WithState(log =>
             {
                 Refresh(_timeProvider.GetUtcNow(), log);
                 if (_state == SimulationState.Idle)
@@ -168,18 +160,21 @@ public sealed class SimulationController : ISimulationControl
                     Reject(log, "Stop rejected: no simulation to stop");
                 }
 
-                var result = (_runner?.MissionCode, _state, _originalPlanned);
+                var result = (_runner?.MissionCode, _state, _runner?.Clock.WallLaunchUtc, _wroteSamples);
                 _idleSpeed = _runner?.Clock.Speed ?? _idleSpeed;
                 ResetRun();
                 return result;
             });
 
-            _logger.LogInformation("Simulation stopped: mission {MissionCode}, was {PreviousState}", missionCode, previous);
+            _logger.LogInformation(
+                "Simulation stopped: mission {MissionCode}, was {PreviousState}, simulation anchor {SimulationLaunchTimeUtc:O}", missionCode, previous, anchor);
 
-            // Completed keeps its stored result; only an interrupted run restores the planned launch time.
+            // Completed keeps its stored result; an interrupted run goes back to Scheduled without an actual launch time.
+            // The anchor stays when samples were written (they keep their time axis until the next Start replaces both);
+            // without samples it is cleared so the planned KML falls back to the planned T0.
             if (previous is SimulationState.Countdown or SimulationState.Running && missionCode is not null)
             {
-                await TryResetStatusAsync(missionCode, original).ConfigureAwait(false);
+                await TryResetStatusAsync(missionCode, null, clearAnchor: !wrote).ConfigureAwait(false);
             }
 
             return GetStatus();
@@ -336,7 +331,7 @@ public sealed class SimulationController : ISimulationControl
 
                 if (current.InFlight)
                 {
-                    await SetStateAsync(missions, runner.MissionCode, MissionStatus.InFlight, launch, launch, cancellationToken).ConfigureAwait(false);
+                    await SetStateAsync(missions, runner.MissionCode, MissionStatus.InFlight, launch, null, clearActual: false, clearAnchor: false, cancellationToken).ConfigureAwait(false);
                     WithStateDo(_ => _pendingInFlight = false);
                 }
 
@@ -354,6 +349,7 @@ public sealed class SimulationController : ISimulationControl
                     inserted = true;
                     WithStateDo(_ =>
                     {
+                        _wroteSamples |= accepted.Count > 0;
                         foreach (var (vehicle, timestamp) in lastTimestamps)
                         {
                             _lastTimestamps[vehicle] = timestamp;
@@ -374,7 +370,7 @@ public sealed class SimulationController : ISimulationControl
                 var completePending = WithState(_ => _pendingCompleted);
                 if (completePending)
                 {
-                    await SetStateAsync(missions, runner.MissionCode, MissionStatus.Completed, launch, launch, cancellationToken).ConfigureAwait(false);
+                    await SetStateAsync(missions, runner.MissionCode, MissionStatus.Completed, launch, null, clearActual: false, clearAnchor: false, cancellationToken).ConfigureAwait(false);
                     var finalOffset = WithState(_ =>
                     {
                         _pendingCompleted = false;
@@ -440,18 +436,18 @@ public sealed class SimulationController : ISimulationControl
 
     private async Task HandleTickFailureAsync(SimulationRunner runner, DateTimeOffset now, Exception ex)
     {
-        var (failures, stopped, original) = WithState(_ =>
+        var (failures, stopped, wrote) = WithState(_ =>
         {
             var count = ++_failures;
             var stop = count >= _options.MaxConsecutiveFailures && _runner == runner;
-            var planned = _originalPlanned;
+            var wroteSamples = _wroteSamples;
             if (stop)
             {
                 ResetRun();
                 _reason = "Stopped after repeated storage errors";
             }
 
-            return (count, stop, planned);
+            return (count, stop, wroteSamples);
         });
 
         // The exception detail goes to the log only, never into the status text.
@@ -462,23 +458,25 @@ public sealed class SimulationController : ISimulationControl
 
         if (stopped)
         {
-            await TryResetStatusAsync(runner.MissionCode, original).ConfigureAwait(false);
+            await TryResetStatusAsync(runner.MissionCode, null, clearAnchor: !wrote).ConfigureAwait(false);
         }
     }
 
     /// <summary>
-    /// Best effort: Scheduled with the original planned launch time; a failure or timeout is logged, never thrown.
-    /// Deliberately independent of any caller token (a cancelled Stop must still restore the DB) but bounded by
-    /// <see cref="ResetTimeout"/> so host shutdown cannot hang.
+    /// Best effort: Scheduled without an actual launch time; the simulation anchor is set to <paramref name="anchor"/>,
+    /// cleared (<paramref name="clearAnchor"/>) or, when both are unset, left unchanged. The planned T0 is never touched.
+    /// A failure or timeout is logged, never thrown. Deliberately independent of any caller token (a cancelled Stop must
+    /// still reset the DB) but bounded by <see cref="ResetTimeout"/> so host shutdown cannot hang.
     /// </summary>
-    private async Task TryResetStatusAsync(string missionCode, DateTimeOffset? plannedLaunchTimeUtc)
+    private async Task TryResetStatusAsync(string missionCode, DateTimeOffset? anchor, bool clearAnchor)
     {
         try
         {
             using var cts = new CancellationTokenSource(ResetTimeout);
             using var scope = _scopeFactory.CreateScope();
             var missions = scope.ServiceProvider.GetRequiredService<IMissionRepository>();
-            await SetStateAsync(missions, missionCode, MissionStatus.Scheduled, null, plannedLaunchTimeUtc, cts.Token).ConfigureAwait(false);
+            await SetStateAsync(missions, missionCode, MissionStatus.Scheduled, null, anchor, clearActual: true, clearAnchor, cts.Token)
+                .ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -501,10 +499,13 @@ public sealed class SimulationController : ISimulationControl
         string missionCode,
         MissionStatus status,
         DateTimeOffset? actualLaunchTimeUtc,
-        DateTimeOffset? plannedLaunchTimeUtc,
+        DateTimeOffset? simulationLaunchTimeUtc,
+        bool clearActual,
+        bool clearAnchor,
         CancellationToken cancellationToken)
     {
-        var found = await missions.SetFlightStateAsync(missionCode, status, actualLaunchTimeUtc, plannedLaunchTimeUtc, cancellationToken)
+        var found = await missions.SetFlightStateAsync(
+                missionCode, status, actualLaunchTimeUtc, simulationLaunchTimeUtc, clearActual, clearAnchor, cancellationToken)
             .ConfigureAwait(false);
         if (!found)
         {
@@ -546,8 +547,8 @@ public sealed class SimulationController : ISimulationControl
         _reason = null;
         _pendingInFlight = false;
         _pendingCompleted = false;
-        _originalPlanned = null;
         _finalOffsetSeconds = null;
+        _wroteSamples = false;
     }
 
     /// <summary>Countdown -> Running at liftoff (wall clock). Caller holds <c>_stateLock</c>.</summary>

@@ -24,10 +24,10 @@ internal static class LiveVehicleGenerator
 
     public static XElement CreateFolder(MissionInfo info, IReadOnlyList<LiveVehicleState> vehicles, KmlAssetUrls assets)
     {
-        // T+ source: the planned launch time, the same T0 as the planned document and its events (Mission.Clock is built
-        // from it). BuildLive gets no Mission, so this MissionInfo field is the one shared source; a moving actual T0
-        // would make the same T+ label differ between the documents.
-        var t0 = info.PlannedLaunchTimeUtc;
+        // T+ source: the effective T0 (simulation anchor, else planned), the same T0 as the planned document, its events and
+        // the history (Mission.Clock is built from it). BuildLive gets no Mission, so this MissionInfo value is the one
+        // shared source; a moving actual T0 would make the same T+ label differ between the documents.
+        var t0 = info.LaunchTimeUtc;
         var folder = K("Folder", K("name", KmlLod.FolderName.Vehicles));
         foreach (var state in vehicles.OrderBy(v => v.Vehicle.Type))
         {

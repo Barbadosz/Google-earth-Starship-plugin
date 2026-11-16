@@ -151,19 +151,66 @@ public class MissionRepositoryTests
     }
 
     [Fact]
-    public async Task SetFlightState_UpdatesStatusAndTimes()
+    public async Task SetPlannedLaunchTime_ClearsSimulationState_AndDeletesOnlySimulatedSamples()
+    {
+        using var db = await TestDatabase.CreateAsync();
+        await db.Missions.ImportAsync(TestData.Mission(), true, Ct);
+        var anchor = new DateTimeOffset(2026, 11, 15, 12, 5, 0, TimeSpan.Zero);
+        await db.Missions.SetFlightStateAsync(TestData.Code, MissionStatus.Completed, anchor, anchor, cancellationToken: Ct);
+        await db.Telemetry.AddRangeAsync(TestData.Code,
+        [
+            TestData.Sample(VehicleType.Starship, anchor.AddSeconds(1)),
+            TestData.Sample(VehicleType.SuperHeavy, anchor.AddSeconds(1)),
+            TestData.Sample(VehicleType.Starship, anchor.AddSeconds(2), quality: DataQuality.Unknown, source: DataSourceNames.PlannedTrajectoryFile),
+        ], Ct);
+        var newT0 = new DateTimeOffset(2027, 1, 2, 3, 4, 5, TimeSpan.Zero);
+
+        Assert.True(await db.Missions.SetPlannedLaunchTimeAsync(TestData.Code, newT0, Ct));
+
+        var info = await db.Missions.GetInfoAsync(TestData.Code, Ct);
+        Assert.Equal(MissionStatus.Scheduled, info!.Status);
+        Assert.Equal(newT0, info.PlannedLaunchTimeUtc);
+        Assert.Null(info.SimulationLaunchTimeUtc);
+        Assert.Null(info.ActualLaunchTimeUtc);
+        Assert.Equal(newT0, info.LaunchTimeUtc);
+        var mission = await db.Missions.GetPlannedMissionAsync(TestData.Code, Ct);
+        Assert.Equal(newT0, mission!.Clock.LaunchTimeUtc);
+        Assert.Equal(newT0, mission.Config.LaunchTimeUtc);
+
+        var left = await db.Telemetry.GetSamplesAsync(TestData.Code, null, null, 100, Ct);
+        var kept = Assert.Single(left);
+        Assert.Equal(DataQuality.Unknown, kept.Quality);
+    }
+
+    [Fact]
+    public async Task SetPlannedLaunchTime_DoesNotTouchOtherMissionsSamples()
+    {
+        using var db = await TestDatabase.CreateAsync();
+        await db.Missions.ImportAsync(TestData.Mission(), true, Ct);
+        await db.Missions.ImportAsync(TestData.Mission("other"), true, Ct);
+        await db.Telemetry.AddRangeAsync("other", [TestData.Sample(VehicleType.Starship, TestData.T0.AddSeconds(1))], Ct);
+
+        await db.Missions.SetPlannedLaunchTimeAsync(TestData.Code, TestData.T0.AddHours(1), Ct);
+
+        Assert.Single(await db.Telemetry.GetSamplesAsync("other", null, null, 100, Ct));
+    }
+
+    [Fact]
+    public async Task SetFlightState_SetsStatusActualAndAnchor_NeverPlanned()
     {
         using var db = await TestDatabase.CreateAsync();
         await db.Missions.ImportAsync(TestData.Mission(), true, Ct);
         var launch = new DateTimeOffset(2026, 11, 15, 12, 5, 0, TimeSpan.Zero);
 
-        var ok = await db.Missions.SetFlightStateAsync(TestData.Code, MissionStatus.InFlight, launch, launch, Ct);
+        var ok = await db.Missions.SetFlightStateAsync(TestData.Code, MissionStatus.InFlight, launch, launch, cancellationToken: Ct);
 
         Assert.True(ok);
         var info = await db.Missions.GetInfoAsync(TestData.Code, Ct);
         Assert.Equal(MissionStatus.InFlight, info!.Status);
         Assert.Equal(launch, info.ActualLaunchTimeUtc);
-        Assert.Equal(launch, info.PlannedLaunchTimeUtc);
+        Assert.Equal(launch, info.SimulationLaunchTimeUtc);
+        Assert.Equal(TestData.T0, info.PlannedLaunchTimeUtc);
+        Assert.Equal(launch, info.LaunchTimeUtc);
     }
 
     [Fact]
@@ -171,14 +218,86 @@ public class MissionRepositoryTests
     {
         using var db = await TestDatabase.CreateAsync();
         await db.Missions.ImportAsync(TestData.Mission(), true, Ct);
+        var launch = new DateTimeOffset(2026, 11, 15, 12, 5, 0, TimeSpan.Zero);
+        await db.Missions.SetFlightStateAsync(TestData.Code, MissionStatus.InFlight, launch, launch, cancellationToken: Ct);
 
-        await db.Missions.SetFlightStateAsync(TestData.Code, MissionStatus.Completed, null, null, Ct);
+        await db.Missions.SetFlightStateAsync(TestData.Code, MissionStatus.Completed, null, null, cancellationToken: Ct);
 
         var info = await db.Missions.GetInfoAsync(TestData.Code, Ct);
         Assert.Equal(MissionStatus.Completed, info!.Status);
         Assert.Equal(TestData.T0, info.PlannedLaunchTimeUtc);
+        Assert.Equal(launch, info.ActualLaunchTimeUtc);
+        Assert.Equal(launch, info.SimulationLaunchTimeUtc);
+        Assert.False(await db.Missions.SetFlightStateAsync("nope", MissionStatus.Completed, null, null, cancellationToken: Ct));
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task SetFlightState_ClearFlags_ClearOnlyTheirValue(bool clearActual, bool clearAnchor)
+    {
+        using var db = await TestDatabase.CreateAsync();
+        await db.Missions.ImportAsync(TestData.Mission(), true, Ct);
+        var launch = new DateTimeOffset(2026, 11, 15, 12, 5, 0, TimeSpan.Zero);
+        await db.Missions.SetFlightStateAsync(TestData.Code, MissionStatus.InFlight, launch, launch, cancellationToken: Ct);
+
+        await db.Missions.SetFlightStateAsync(
+            TestData.Code, MissionStatus.Scheduled, null, null, clearActualLaunchTime: clearActual, clearSimulationLaunchTime: clearAnchor, cancellationToken: Ct);
+
+        var info = await db.Missions.GetInfoAsync(TestData.Code, Ct);
+        Assert.Equal(clearActual ? null : launch, info!.ActualLaunchTimeUtc);
+        Assert.Equal(clearAnchor ? null : launch, info.SimulationLaunchTimeUtc);
+        Assert.Equal(TestData.T0, info.PlannedLaunchTimeUtc);
+    }
+
+    [Fact]
+    public async Task SetFlightState_ValueTogetherWithItsClearFlag_Throws()
+    {
+        using var db = await TestDatabase.CreateAsync();
+        await db.Missions.ImportAsync(TestData.Mission(), true, Ct);
+        var launch = new DateTimeOffset(2026, 11, 15, 12, 5, 0, TimeSpan.Zero);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => db.Missions.SetFlightStateAsync(
+            TestData.Code, MissionStatus.InFlight, launch, null, clearActualLaunchTime: true, cancellationToken: Ct));
+        await Assert.ThrowsAsync<ArgumentException>(() => db.Missions.SetFlightStateAsync(
+            TestData.Code, MissionStatus.InFlight, null, launch, clearSimulationLaunchTime: true, cancellationToken: Ct));
+
+        var info = await db.Missions.GetInfoAsync(TestData.Code, Ct);
+        Assert.Equal(MissionStatus.Scheduled, info!.Status);
         Assert.Null(info.ActualLaunchTimeUtc);
-        Assert.False(await db.Missions.SetFlightStateAsync("nope", MissionStatus.Completed, null, null, Ct));
+        Assert.Null(info.SimulationLaunchTimeUtc);
+    }
+
+    [Fact]
+    public async Task SetFlightState_NonUtcValues_Throw()
+    {
+        using var db = await TestDatabase.CreateAsync();
+        await db.Missions.ImportAsync(TestData.Mission(), true, Ct);
+        var local = new DateTimeOffset(2026, 11, 15, 12, 5, 0, TimeSpan.FromHours(1));
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            db.Missions.SetFlightStateAsync(TestData.Code, MissionStatus.InFlight, local, null, cancellationToken: Ct));
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            db.Missions.SetFlightStateAsync(TestData.Code, MissionStatus.InFlight, null, local, cancellationToken: Ct));
+    }
+
+    [Fact]
+    public async Task GetPlannedMission_ClockAndConfigUseTheAnchor_InfoKeepsPlanned()
+    {
+        using var db = await TestDatabase.CreateAsync();
+        await db.Missions.ImportAsync(TestData.Mission(), true, Ct);
+        var anchor = new DateTimeOffset(2026, 11, 15, 12, 5, 0, TimeSpan.Zero).AddTicks(42);
+
+        await db.Missions.SetFlightStateAsync(TestData.Code, MissionStatus.Scheduled, null, anchor, cancellationToken: Ct);
+
+        var mission = await db.Missions.GetPlannedMissionAsync(TestData.Code, Ct);
+        Assert.Equal(anchor, mission!.Clock.LaunchTimeUtc);
+        Assert.Equal(anchor, mission.Config.LaunchTimeUtc);
+        var info = await db.Missions.GetInfoAsync(TestData.Code, Ct);
+        Assert.Equal(TestData.T0, info!.PlannedLaunchTimeUtc);
+        Assert.Equal(anchor, info.SimulationLaunchTimeUtc);
+        Assert.Equal(anchor, info.LaunchTimeUtc);
     }
 
     [Fact]
@@ -192,7 +311,7 @@ public class MissionRepositoryTests
 
         Assert.Equal("b-new", (await db.Missions.GetCurrentInfoAsync(Ct))!.MissionCode);
 
-        await db.Missions.SetFlightStateAsync("a-old", MissionStatus.InFlight, older, null, Ct);
+        await db.Missions.SetFlightStateAsync("a-old", MissionStatus.InFlight, older, null, cancellationToken: Ct);
 
         Assert.Equal("a-old", (await db.Missions.GetCurrentInfoAsync(Ct))!.MissionCode);
         Assert.Equal(["a-old", "b-new"], (await db.Missions.ListAsync(Ct)).Select(m => m.MissionCode).ToArray());

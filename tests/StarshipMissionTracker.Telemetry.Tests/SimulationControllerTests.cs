@@ -35,7 +35,8 @@ public class SimulationControllerTests
         Assert.Equal(-10, started.CurrentOffsetSeconds);
         Assert.Equal(TestData.Start.AddSeconds(10), started.LaunchTimeUtc);
         Assert.Equal(1, rig.Telemetry.DeleteCalls);
-        Assert.Equal((MissionStatus.Scheduled, (DateTimeOffset?)null, (DateTimeOffset?)TestData.Start.AddSeconds(10)), rig.Missions.StateCalls[0]);
+        Assert.Equal((MissionStatus.Scheduled, (DateTimeOffset?)null, (DateTimeOffset?)TestData.Start.AddSeconds(10), true, false), rig.Missions.StateCalls[0]);
+        Assert.Null(rig.Missions.StoredPlanned); // the planned T0 is never written by the simulator
 
         await rig.Run(9.75);
         Assert.Equal(SimulationState.Countdown, rig.Controller.GetStatus().State);
@@ -304,35 +305,42 @@ public class SimulationControllerTests
     }
 
     [Fact]
-    public async Task ConsecutiveFailures_AlsoResetStatusAndPlannedTime()
+    public async Task ConsecutiveFailures_ResetStatus_ClearActual_KeepAnchorAndPlanned()
     {
         var rig = new TestData.Rig(maxFailures: 3);
+        var anchor = TestData.Start.AddSeconds(10);
         await rig.Start(speed: 1, countdown: 10);
-        Assert.Equal(TestData.Start.AddSeconds(10), rig.Missions.StoredPlanned); // simulated T0 differs from the original
+        Assert.Equal(anchor, rig.Missions.StoredAnchor);
         await rig.Run(11);
         Assert.Equal(MissionStatus.InFlight, rig.Missions.StoredStatus);
+        Assert.Equal(anchor, rig.Missions.StoredActual);
 
         rig.Telemetry.FailNextAdds = 10;
         await rig.Run(5); // samples are due once per mission second, so each failing second counts once
         Assert.Equal(SimulationState.Idle, rig.Controller.GetStatus().State);
         Assert.Equal(MissionStatus.Scheduled, rig.Missions.StoredStatus);
-        Assert.Equal(TestData.Start, rig.Missions.StoredPlanned);
+        Assert.Null(rig.Missions.StoredActual);
+        Assert.Equal(anchor, rig.Missions.StoredAnchor);
+        Assert.Equal(TestData.Start, rig.Missions.Info.PlannedLaunchTimeUtc);
+        Assert.Null(rig.Missions.StoredPlanned);
     }
 
     [Fact]
-    public async Task Stop_WithCancelledToken_StillRestoresStatusAndPlannedTime()
+    public async Task Stop_WithCancelledToken_StillResetsStatusAndActual()
     {
         var rig = new TestData.Rig();
-        await rig.Start(speed: 1, countdown: 10);
-        Assert.Equal(TestData.Start.AddSeconds(10), rig.Missions.StoredPlanned);
+        await rig.Start(speed: 1, countdown: 0);
+        await rig.Run(2);
+        Assert.Equal(MissionStatus.InFlight, rig.Missions.StoredStatus);
         using var cts = new CancellationTokenSource();
-        rig.Missions.BeforeStateWrite = () => cts.Cancel(); // the caller cancels while the restore is running
+        rig.Missions.BeforeStateWrite = () => cts.Cancel(); // the caller cancels while the reset is running
 
         var status = await rig.Controller.StopAsync(cts.Token);
 
         Assert.Equal(SimulationState.Idle, status.State);
         Assert.Equal(MissionStatus.Scheduled, rig.Missions.StoredStatus);
-        Assert.Equal(TestData.Start, rig.Missions.StoredPlanned);
+        Assert.Null(rig.Missions.StoredActual);
+        Assert.Null(rig.Missions.StoredPlanned);
     }
 
     [Fact]
@@ -396,21 +404,46 @@ public class SimulationControllerTests
     }
 
     [Fact]
-    public async Task Stop_DuringCountdownOrRunning_RestoresOriginalPlannedTime()
+    public async Task Stop_DuringCountdownOrRunning_ClearsActual_AnchorOnlyWithoutSamples_NeverTouchesPlanned()
     {
         var rig = new TestData.Rig();
-        var original = TestData.Start;
+        var anchor = TestData.Start.AddSeconds(10);
         await rig.Start(speed: 1, countdown: 10);
-        Assert.Equal(TestData.Start.AddSeconds(10), rig.Missions.StoredPlanned);
+        Assert.Equal(anchor, rig.Missions.StoredAnchor);
         await rig.Controller.StopAsync(Ct);
         Assert.Equal(MissionStatus.Scheduled, rig.Missions.StoredStatus);
-        Assert.Equal(original, rig.Missions.StoredPlanned);
+        Assert.Null(rig.Missions.StoredActual);
+        Assert.Null(rig.Missions.StoredAnchor); // no sample was written: the planned T0 is the effective T0 again
+        Assert.Equal(TestData.Start, rig.Missions.Info.LaunchTimeUtc);
+        Assert.Equal(TestData.Start, rig.Missions.Info.PlannedLaunchTimeUtc);
 
+        var restart = rig.Time.GetUtcNow();
         await rig.Start(speed: 1, countdown: 0);
         await rig.Run(3);
+        Assert.Equal(restart, rig.Missions.StoredActual);
         await rig.Controller.StopAsync(Ct);
         Assert.Equal(MissionStatus.Scheduled, rig.Missions.StoredStatus);
-        Assert.NotNull(rig.Missions.StoredActual); // contract limit: Actual cannot be cleared through SetFlightStateAsync
+        Assert.Null(rig.Missions.StoredActual);
+        Assert.Equal(restart, rig.Missions.StoredAnchor); // samples already written keep their time axis
+        Assert.Equal(restart, rig.Missions.Info.LaunchTimeUtc);
+        Assert.Null(rig.Missions.StoredPlanned);
+    }
+
+    [Fact]
+    public async Task ConsecutiveFailures_WithoutAnySample_ClearTheAnchor()
+    {
+        var rig = new TestData.Rig(maxFailures: 1);
+        await rig.Start(speed: 1, countdown: 0);
+        Assert.NotNull(rig.Missions.StoredAnchor);
+        rig.Telemetry.FailNextAdds = 10;
+
+        await rig.Run(0.25);
+
+        Assert.Equal(SimulationState.Idle, rig.Controller.GetStatus().State);
+        Assert.Empty(rig.Telemetry.Samples);
+        Assert.Equal(MissionStatus.Scheduled, rig.Missions.StoredStatus);
+        Assert.Null(rig.Missions.StoredAnchor);
+        Assert.Equal(TestData.Start, rig.Missions.Info.LaunchTimeUtc);
     }
 
     [Fact]
@@ -419,10 +452,41 @@ public class SimulationControllerTests
         var rig = new TestData.Rig();
         await rig.Start(speed: 1, countdown: 0);
         await rig.Run(30);
-        var planned = rig.Missions.StoredPlanned;
+        var calls = rig.Missions.StateCalls.Count;
         await rig.Controller.StopAsync(Ct);
         Assert.Equal(MissionStatus.Completed, rig.Missions.StoredStatus);
-        Assert.Equal(planned, rig.Missions.StoredPlanned);
+        Assert.Equal(TestData.Start, rig.Missions.StoredActual);
+        Assert.Equal(TestData.Start, rig.Missions.StoredAnchor);
+        Assert.Equal(calls, rig.Missions.StateCalls.Count);
+    }
+
+    [Fact]
+    public async Task CompletedRun_ThenNewStart_PlannedStaysTheImportValue_AnchorMoves()
+    {
+        var rig = new TestData.Rig();
+        await rig.Start(speed: 1, countdown: 0);
+        await rig.Run(30);
+        Assert.Equal(SimulationState.Completed, rig.Controller.GetStatus().State);
+        rig.Time.Advance(TimeSpan.FromMinutes(5));
+
+        var second = await rig.Start(speed: 1, countdown: 10);
+
+        Assert.Equal(TestData.Start, rig.Missions.Info.PlannedLaunchTimeUtc);
+        Assert.Null(rig.Missions.StoredPlanned);
+        Assert.Equal(second.LaunchTimeUtc, rig.Missions.StoredAnchor);
+        Assert.Null(rig.Missions.StoredActual); // the Completed run's actual time is cleared by the new Start
+        Assert.Equal(MissionStatus.Scheduled, rig.Missions.StoredStatus);
+    }
+
+    [Fact]
+    public async Task Start_ClearsStaleActualLaunchTime()
+    {
+        var rig = new TestData.Rig();
+        rig.Missions.StoredActual = TestData.Start.AddDays(-1); // e.g. left behind by a crash during a run
+
+        await rig.Start(speed: 1, countdown: 10);
+
+        Assert.Null(rig.Missions.StoredActual);
     }
 
     [Fact]
@@ -435,13 +499,31 @@ public class SimulationControllerTests
     }
 
     [Fact]
-    public async Task Start_DeleteFailure_RestoresPlannedTime_AndStaysIdle()
+    public async Task Start_BeginRunFailure_ChangesNothing_AndStaysIdle()
     {
         var rig = new TestData.Rig();
-        rig.Telemetry.FailDelete = true;
+        var previous = TestData.Start.AddHours(-1);
+        rig.Missions.StoredAnchor = previous;
+        rig.Missions.StoredStatus = MissionStatus.Completed;
+        rig.Missions.StoredActual = previous;
+        var earlier = new TestData.Rig();
+        await earlier.Start(speed: 1, countdown: 0);
+        await earlier.Run(1);
+        rig.Telemetry.Samples.AddRange(earlier.Telemetry.Samples);
+        var sampleCount = rig.Telemetry.Samples.Count;
+        Assert.True(sampleCount > 0);
+        rig.Missions.FailBeginRun = true;
+
         await Assert.ThrowsAsync<InvalidOperationException>(() => rig.Start(speed: 1, countdown: 10));
+
         Assert.Equal(SimulationState.Idle, rig.Controller.GetStatus().State);
-        Assert.Equal(TestData.Start, rig.Missions.StoredPlanned);
+        Assert.Equal(previous, rig.Missions.StoredAnchor);
+        Assert.Equal(previous, rig.Missions.StoredActual);
+        Assert.Equal(MissionStatus.Completed, rig.Missions.StoredStatus);
+        Assert.Equal(sampleCount, rig.Telemetry.Samples.Count);
+        Assert.Equal(0, rig.Telemetry.DeleteCalls);
+        Assert.Empty(rig.Missions.StateCalls);
+        Assert.Null(rig.Missions.StoredPlanned);
     }
 
     [Theory]

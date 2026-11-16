@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 using StarshipMissionTracker.Core.Enums;
 using StarshipMissionTracker.Core.Interfaces;
@@ -104,6 +105,10 @@ public sealed class MissionRepository(
     {
         RequireUtc(plannedLaunchTimeUtc, nameof(plannedLaunchTimeUtc));
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
+
+        // One transaction: the new T0, the cleared simulation state and the deleted simulated samples appear together or
+        // not at all, so no reader ever sees samples on a time axis that no longer exists.
+        await using var transaction = await BeginWriteTransactionAsync(db, cancellationToken);
         var row = await db.Missions.FirstOrDefaultAsync(m => m.MissionCode == missionCode, cancellationToken);
         if (row is null)
         {
@@ -112,28 +117,92 @@ public sealed class MissionRepository(
         }
 
         var old = row.PlannedLaunchTimeUtc;
+        var oldAnchor = row.SimulationLaunchTimeUtc;
+        var oldStatus = row.Status;
         row.PlannedLaunchTimeUtc = plannedLaunchTimeUtc;
+        row.SimulationLaunchTimeUtc = null;
+        row.ActualLaunchTimeUtc = null;
+        row.Status = MissionStatus.Scheduled;
         row.UpdatedAtUtc = timeProvider.GetUtcNow();
         await db.SaveChangesAsync(cancellationToken);
-        logger.LogInformation("Mission {MissionCode} T0 changed {OldLaunchTimeUtc:O} -> {NewLaunchTimeUtc:O}", missionCode, old, plannedLaunchTimeUtc);
+
+        var missionId = row.Id;
+        var deleted = await db.TelemetrySamples
+            .Where(s => s.Quality == DataQuality.Simulated && s.Vehicle.MissionId == missionId)
+            .ExecuteDeleteAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        logger.LogInformation(
+            "Mission {MissionCode} T0 changed {OldLaunchTimeUtc:O} -> {NewLaunchTimeUtc:O}; status {OldStatus} -> Scheduled, simulation anchor {OldAnchorUtc:O} cleared, {Deleted} simulated samples deleted",
+            missionCode, old, plannedLaunchTimeUtc, oldStatus, oldAnchor, deleted);
         return true;
     }
+
+    public async Task<bool> BeginSimulationRunAsync(
+        string missionCode, DateTimeOffset simulationLaunchTimeUtc, CancellationToken cancellationToken = default)
+    {
+        RequireUtc(simulationLaunchTimeUtc, nameof(simulationLaunchTimeUtc));
+        await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
+
+        // One transaction: if anything fails the transaction is rolled back on dispose and the previous run (status, anchor,
+        // samples) is intact. The planned T0 is not written: the run has its own time axis (the anchor).
+        await using var transaction = await BeginWriteTransactionAsync(db, cancellationToken);
+        var row = await db.Missions.FirstOrDefaultAsync(m => m.MissionCode == missionCode, cancellationToken);
+        if (row is null)
+        {
+            logger.LogWarning("Simulation run start for unknown mission {MissionCode} ignored", missionCode);
+            return false;
+        }
+
+        var oldStatus = row.Status;
+        var oldAnchor = row.SimulationLaunchTimeUtc;
+        row.Status = MissionStatus.Scheduled;
+        row.SimulationLaunchTimeUtc = simulationLaunchTimeUtc;
+        row.ActualLaunchTimeUtc = null;
+        row.UpdatedAtUtc = timeProvider.GetUtcNow();
+        await db.SaveChangesAsync(cancellationToken);
+
+        var missionId = row.Id;
+        var deleted = await db.TelemetrySamples
+            .Where(s => s.Quality == DataQuality.Simulated && s.Vehicle.MissionId == missionId)
+            .ExecuteDeleteAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        logger.LogInformation(
+            "Mission {MissionCode} simulation run begun: status {OldStatus} -> Scheduled, simulation anchor {OldAnchorUtc:O} -> {NewAnchorUtc:O}, {Deleted} simulated samples deleted",
+            missionCode, oldStatus, oldAnchor, simulationLaunchTimeUtc, deleted);
+        return true;
+    }
+
+    /// <summary>
+    /// Starts a write-locking transaction. A read followed by a write inside a deferred transaction can fail with
+    /// SQLITE_BUSY_SNAPSHOT under WAL when another writer commits in between. EF's BeginTransactionAsync on
+    /// Microsoft.Data.Sqlite is not deferred: it issues BEGIN IMMEDIATE, so the write lock is taken before the first read
+    /// (verified by MissionRepositoryTransactionTests.EfTransaction_TakesTheWriteLockAtOnce); other writers wait for the
+    /// busy timeout instead of failing later. Kept in one place so this stays true for every multi-step write.
+    /// </summary>
+    private static Task<IDbContextTransaction> BeginWriteTransactionAsync(StarshipDbContext db, CancellationToken cancellationToken) =>
+        db.Database.BeginTransactionAsync(cancellationToken);
 
     public async Task<bool> SetFlightStateAsync(
         string missionCode,
         MissionStatus status,
         DateTimeOffset? actualLaunchTimeUtc,
-        DateTimeOffset? plannedLaunchTimeUtc,
+        DateTimeOffset? simulationLaunchTimeUtc,
+        bool clearActualLaunchTime = false,
+        bool clearSimulationLaunchTime = false,
         CancellationToken cancellationToken = default)
     {
         if (actualLaunchTimeUtc is { } actual)
         {
             RequireUtc(actual, nameof(actualLaunchTimeUtc));
+            RequireNotCleared(clearActualLaunchTime, nameof(actualLaunchTimeUtc), nameof(clearActualLaunchTime));
         }
 
-        if (plannedLaunchTimeUtc is { } planned)
+        if (simulationLaunchTimeUtc is { } anchor)
         {
-            RequireUtc(planned, nameof(plannedLaunchTimeUtc));
+            RequireUtc(anchor, nameof(simulationLaunchTimeUtc));
+            RequireNotCleared(clearSimulationLaunchTime, nameof(simulationLaunchTimeUtc), nameof(clearSimulationLaunchTime));
         }
 
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
@@ -146,22 +215,30 @@ public sealed class MissionRepository(
 
         var oldStatus = row.Status;
         row.Status = status;
-        if (actualLaunchTimeUtc is not null)
+        if (actualLaunchTimeUtc is not null || clearActualLaunchTime)
         {
             row.ActualLaunchTimeUtc = actualLaunchTimeUtc;
         }
 
-        if (plannedLaunchTimeUtc is not null)
+        if (simulationLaunchTimeUtc is not null || clearSimulationLaunchTime)
         {
-            row.PlannedLaunchTimeUtc = plannedLaunchTimeUtc.Value;
+            row.SimulationLaunchTimeUtc = simulationLaunchTimeUtc;
         }
 
         row.UpdatedAtUtc = timeProvider.GetUtcNow();
         await db.SaveChangesAsync(cancellationToken);
         logger.LogInformation(
-            "Mission {MissionCode} state {OldStatus} -> {Status}, actual {ActualLaunchTimeUtc:O}, planned {PlannedLaunchTimeUtc:O}",
-            missionCode, oldStatus, status, row.ActualLaunchTimeUtc, row.PlannedLaunchTimeUtc);
+            "Mission {MissionCode} state {OldStatus} -> {Status}, actual {ActualLaunchTimeUtc:O}, simulation anchor {SimulationLaunchTimeUtc:O}, planned {PlannedLaunchTimeUtc:O}",
+            missionCode, oldStatus, status, row.ActualLaunchTimeUtc, row.SimulationLaunchTimeUtc, row.PlannedLaunchTimeUtc);
         return true;
+    }
+
+    private static void RequireNotCleared(bool clear, string valueName, string flagName)
+    {
+        if (clear)
+        {
+            throw new ArgumentException($"'{valueName}' cannot be given together with '{flagName}' = true.", valueName);
+        }
     }
 
     private static void RequireUtc(DateTimeOffset value, string paramName)

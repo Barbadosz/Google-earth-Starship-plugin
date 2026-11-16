@@ -78,6 +78,9 @@ namespace StarshipMissionTracker.Data.Migrations
                     b.Property<long>("PlannedLaunchTimeUtc")
                         .HasColumnType("INTEGER");
 
+                    b.Property<long?>("SimulationLaunchTimeUtc")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasColumnType("TEXT");

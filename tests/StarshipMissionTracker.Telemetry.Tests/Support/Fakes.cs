@@ -9,12 +9,19 @@ public sealed class FakeMissionRepository : IMissionRepository
 {
     public required Mission Mission { get; init; }
     public bool IsSimulated { get; init; } = true;
-    public List<(MissionStatus Status, DateTimeOffset? Actual, DateTimeOffset? Planned)> StateCalls { get; } = [];
+    public List<(MissionStatus Status, DateTimeOffset? Actual, DateTimeOffset? Anchor, bool ClearActual, bool ClearAnchor)> StateCalls { get; } = [];
 
-    /// <summary>Stored values, updated like the real repository: a null time argument leaves the stored value unchanged.</summary>
-    public MissionStatus StoredStatus { get; private set; } = MissionStatus.Scheduled;
-    public DateTimeOffset? StoredActual { get; private set; }
+    /// <summary>
+    /// Stored values, updated like the real repository: a null time argument leaves the stored value unchanged unless its
+    /// clear flag is set; the planned T0 is only changed by <see cref="SetPlannedLaunchTimeAsync"/>.
+    /// </summary>
+    public MissionStatus StoredStatus { get; set; } = MissionStatus.Scheduled;
+    public DateTimeOffset? StoredActual { get; set; }
+    public DateTimeOffset? StoredAnchor { get; set; }
     public DateTimeOffset? StoredPlanned { get; private set; }
+
+    /// <summary>The planned T0 as imported (the fake mission's clock) unless changed through the T0 edit.</summary>
+    public DateTimeOffset Planned => StoredPlanned ?? Mission.Clock.LaunchTimeUtc;
 
     /// <summary>Statuses whose next write throws (once each).</summary>
     public HashSet<MissionStatus> FailOnceFor { get; } = [];
@@ -30,7 +37,7 @@ public sealed class FakeMissionRepository : IMissionRepository
 
     public MissionInfo Info => new(
         Guid.Empty, Mission.MissionCode, Mission.Name, null, StoredStatus,
-        StoredPlanned ?? Mission.Clock.LaunchTimeUtc, StoredActual, IsSimulated, Mission.Clock.LaunchTimeUtc);
+        Planned, StoredActual, IsSimulated, Mission.Clock.LaunchTimeUtc, simulationLaunchTimeUtc: StoredAnchor);
 
     public Task<IReadOnlyList<MissionInfo>> ListAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult<IReadOnlyList<MissionInfo>>([Info]);
@@ -45,19 +52,60 @@ public sealed class FakeMissionRepository : IMissionRepository
 
     public Task<bool> ImportAsync(Mission mission, bool isSimulated, CancellationToken cancellationToken = default) => Task.FromResult(true);
 
-    public Task<bool> SetPlannedLaunchTimeAsync(string missionCode, DateTimeOffset plannedLaunchTimeUtc, CancellationToken cancellationToken = default) =>
-        Task.FromResult(true);
+    public Task<bool> SetPlannedLaunchTimeAsync(string missionCode, DateTimeOffset plannedLaunchTimeUtc, CancellationToken cancellationToken = default)
+    {
+        StoredPlanned = plannedLaunchTimeUtc;
+        StoredAnchor = null;
+        StoredActual = null;
+        StoredStatus = MissionStatus.Scheduled;
+        return Task.FromResult(true);
+    }
+
+    /// <summary>Makes BeginSimulationRunAsync throw before changing anything (the real operation is one transaction).</summary>
+    public bool FailBeginRun { get; set; }
+
+    /// <summary>Telemetry fake whose simulated samples BeginSimulationRunAsync deletes (the real one does it in the same transaction).</summary>
+    public FakeTelemetryRepository? LinkedTelemetry { get; set; }
+
+    /// <summary>Recorded in <see cref="StateCalls"/> as (Scheduled, null, anchor, clearActual: true, clearAnchor: false).</summary>
+    public Task<bool> BeginSimulationRunAsync(string missionCode, DateTimeOffset simulationLaunchTimeUtc, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (FailBeginRun)
+        {
+            throw new InvalidOperationException("simulated database failure beginning the run");
+        }
+
+        StateCalls.Add((MissionStatus.Scheduled, null, simulationLaunchTimeUtc, true, false));
+        if (ReturnFalse)
+        {
+            return Task.FromResult(false);
+        }
+
+        StoredStatus = MissionStatus.Scheduled;
+        StoredAnchor = simulationLaunchTimeUtc;
+        StoredActual = null;
+        LinkedTelemetry?.DeleteSimulatedAsync(missionCode, cancellationToken);
+        return Task.FromResult(true);
+    }
 
     public Task<bool> SetFlightStateAsync(
         string missionCode,
         MissionStatus status,
         DateTimeOffset? actualLaunchTimeUtc,
-        DateTimeOffset? plannedLaunchTimeUtc,
+        DateTimeOffset? simulationLaunchTimeUtc,
+        bool clearActualLaunchTime = false,
+        bool clearSimulationLaunchTime = false,
         CancellationToken cancellationToken = default)
     {
+        if ((actualLaunchTimeUtc is not null && clearActualLaunchTime) || (simulationLaunchTimeUtc is not null && clearSimulationLaunchTime))
+        {
+            throw new ArgumentException("A time cannot be given together with its clear flag.");
+        }
+
         BeforeStateWrite?.Invoke();
         cancellationToken.ThrowIfCancellationRequested();
-        StateCalls.Add((status, actualLaunchTimeUtc, plannedLaunchTimeUtc));
+        StateCalls.Add((status, actualLaunchTimeUtc, simulationLaunchTimeUtc, clearActualLaunchTime, clearSimulationLaunchTime));
         if (FailAlwaysFor.Contains(status) || FailOnceFor.Remove(status))
         {
             throw new InvalidOperationException($"simulated database failure writing {status}");
@@ -69,8 +117,8 @@ public sealed class FakeMissionRepository : IMissionRepository
         }
 
         StoredStatus = status;
-        StoredActual = actualLaunchTimeUtc ?? StoredActual;
-        StoredPlanned = plannedLaunchTimeUtc ?? StoredPlanned;
+        StoredActual = clearActualLaunchTime ? null : actualLaunchTimeUtc ?? StoredActual;
+        StoredAnchor = clearSimulationLaunchTime ? null : simulationLaunchTimeUtc ?? StoredAnchor;
         return Task.FromResult(true);
     }
 }
@@ -80,7 +128,6 @@ public sealed class FakeTelemetryRepository : ITelemetryRepository
     public List<TelemetrySample> Samples { get; } = [];
     public int DeleteCalls { get; private set; }
     public int FailNextAdds { get; set; }
-    public bool FailDelete { get; set; }
 
     public Task AddRangeAsync(string missionCode, IReadOnlyList<TelemetrySample> samples, CancellationToken cancellationToken = default)
     {
@@ -107,11 +154,6 @@ public sealed class FakeTelemetryRepository : ITelemetryRepository
     public Task<int> DeleteSimulatedAsync(string missionCode, CancellationToken cancellationToken = default)
     {
         DeleteCalls++;
-        if (FailDelete)
-        {
-            throw new InvalidOperationException("simulated database failure on delete");
-        }
-
         var count = Samples.Count;
         Samples.Clear();
         return Task.FromResult(count);

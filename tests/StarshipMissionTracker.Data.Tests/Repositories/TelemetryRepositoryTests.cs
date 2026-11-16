@@ -120,6 +120,24 @@ public class TelemetryRepositoryTests
     }
 
     [Fact]
+    public async Task GetHistory_WithSimulationAnchor_OffsetsFromTheAnchorNotThePlannedT0()
+    {
+        using var db = await NewImportedAsync();
+        var anchor = new DateTimeOffset(2026, 11, 15, 12, 5, 0, TimeSpan.Zero);
+        await db.Missions.SetFlightStateAsync(TestData.Code, MissionStatus.InFlight, anchor, anchor, cancellationToken: Ct);
+        await db.Telemetry.AddRangeAsync(TestData.Code,
+        [
+            TestData.Sample(VehicleType.Starship, anchor.AddSeconds(1)),
+            TestData.Sample(VehicleType.Starship, anchor.AddSeconds(7.5)),
+        ], Ct);
+
+        var path = await db.Telemetry.GetHistoryAsync(TestData.Code, VehicleType.Starship, 100, Ct);
+
+        Assert.NotNull(path);
+        Assert.Equal([1d, 7.5], path.Points.Select(p => p.OffsetSeconds).ToArray());
+    }
+
+    [Fact]
     public async Task GetHistory_MixedQualities_PathTakesTheWorst()
     {
         using var db = await NewImportedAsync();

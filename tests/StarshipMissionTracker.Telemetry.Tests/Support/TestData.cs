@@ -32,6 +32,7 @@ public static class TestData
             Time = new ManualTimeProvider(TestData.Start);
             Missions = new FakeMissionRepository { Mission = TestData.Mission(), IsSimulated = simulated };
             Telemetry = new FakeTelemetryRepository();
+            Missions.LinkedTelemetry = Telemetry;
             Options = new SimulationOptions { SampleIntervalSeconds = intervalSeconds, MaxConsecutiveFailures = maxFailures };
             Controller = new SimulationController(
                 new FakeScopeFactory(Missions, Telemetry), Time, Options, Logger);

@@ -122,14 +122,16 @@ public sealed class TelemetryRepository(
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var mission = await db.Missions.AsNoTracking()
             .Where(m => m.MissionCode == missionCode)
-            .Select(m => new { m.PlannedLaunchTimeUtc, VehicleId = m.Vehicles.Where(v => v.Type == vehicle).Select(v => (Guid?)v.Id).FirstOrDefault() })
+            .Select(m => new { m.PlannedLaunchTimeUtc, m.SimulationLaunchTimeUtc, VehicleId = m.Vehicles.Where(v => v.Type == vehicle).Select(v => (Guid?)v.Id).FirstOrDefault() })
             .FirstOrDefaultAsync(cancellationToken);
         if (mission?.VehicleId is not { } vehicleId)
         {
             return null;
         }
 
-        // Only samples that can form a trajectory point (full position incl. altitude); the offset axis is the mission T0.
+        // Only samples that can form a trajectory point (full position incl. altitude); the offset axis is the effective T0
+        // (simulation anchor, else planned), the same value MissionInfo.LaunchTimeUtc and Mission.Clock use.
+        var launchTimeUtc = mission.SimulationLaunchTimeUtc ?? mission.PlannedLaunchTimeUtc;
         var rows = await db.TelemetrySamples.AsNoTracking()
             .Where(s => s.VehicleId == vehicleId && s.Latitude != null && s.Longitude != null && s.AltitudeMeters != null)
             .OrderBy(s => s.TimestampUtc)
@@ -146,7 +148,7 @@ public sealed class TelemetryRepository(
         var sourceName = string.Join(", ", rows.Select(r => r.SourceName).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal));
         var points = Decimate(rows, maxPoints)
             .Select(r => new TrajectoryPoint(
-                (r.TimestampUtc - mission.PlannedLaunchTimeUtc).TotalSeconds,
+                (r.TimestampUtc - launchTimeUtc).TotalSeconds,
                 r.Latitude, r.Longitude, r.AltitudeMeters, r.VelocityMps, r.Quality, r.SourceName,
                 r.HeadingDegrees, r.PitchDegrees, r.RollDegrees))
             .ToList();

@@ -319,6 +319,20 @@ public class DynamicKmlBuilderTests
     }
 
     [Fact]
+    public void Live_TPlus_UsesTheSimulationAnchorOverThePlannedT0()
+    {
+        var anchor = Now.AddSeconds(-30);
+        var info = new MissionInfo(Guid.Empty, "test", "Test mission", null, MissionStatus.InFlight, T0, anchor, true, T0,
+            simulationLaunchTimeUtc: anchor);
+
+        var doc = Parse(_builder.BuildLive(info, [Live(Starship(Path(TrajectoryType.Planned, 2)), Sample())], Now, Assets, 1, MinRefresh));
+
+        var description = doc.Descendants(K + "Placemark").First().Element(K + "description")!.Value;
+        Assert.Contains("(T+00:00:30)", description, StringComparison.Ordinal);
+        Assert.Contains("(T+00:01:40)", LiveDoc(), StringComparison.Ordinal); // without an anchor: the planned T0 (Now = T0 + 100 s)
+    }
+
+    [Fact]
     public void Live_NotSimulated_HasNoSimulatedLabel()
     {
         var kml = _builder.BuildLive(Info(simulated: false), [Live(Starship(Path(TrajectoryType.Planned, 2)), new TelemetrySample(

@@ -9,7 +9,8 @@ namespace StarshipMissionTracker.Data.Mapping;
 internal static class MissionMapper
 {
     public static MissionInfo ToInfo(MissionEntity e) =>
-        new(e.Id, e.MissionCode, e.Name, e.Description, e.Status, e.PlannedLaunchTimeUtc, e.ActualLaunchTimeUtc, e.IsSimulated, e.UpdatedAtUtc);
+        new(e.Id, e.MissionCode, e.Name, e.Description, e.Status, e.PlannedLaunchTimeUtc, e.ActualLaunchTimeUtc, e.IsSimulated, e.UpdatedAtUtc,
+            simulationLaunchTimeUtc: e.SimulationLaunchTimeUtc);
 
     /// <summary>Needs Vehicles (with Trajectories and Points) and Events loaded. Vehicles without a stored path are left out.</summary>
     public static Mission ToMission(MissionEntity e)
@@ -42,8 +43,10 @@ internal static class MissionMapper
                 v.Trajectories.OrderBy(t => t.Type).Select(ToFlightPath).ToList()))
             .ToList();
 
-        var config = new MissionConfig(e.MissionCode, e.Name, e.PlannedLaunchTimeUtc, e.Description, events);
-        return new Mission(config, new LaunchClock(e.PlannedLaunchTimeUtc), vehicles);
+        // Effective T0 (MissionInfo.LaunchTimeUtc): the simulation anchor matches the stored sample timestamps.
+        var launchTimeUtc = e.SimulationLaunchTimeUtc ?? e.PlannedLaunchTimeUtc;
+        var config = new MissionConfig(e.MissionCode, e.Name, launchTimeUtc, e.Description, events);
+        return new Mission(config, new LaunchClock(launchTimeUtc), vehicles);
     }
 
     private static FlightPath ToFlightPath(TrajectoryEntity t) =>

@@ -1,5 +1,7 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace StarshipMissionTracker.Data.Tests;
@@ -42,6 +44,45 @@ public class MigrationTests
             await using var command = connection.CreateCommand();
             command.CommandText = "PRAGMA journal_mode;";
             Assert.Equal("wal", Convert.ToString(await command.ExecuteScalarAsync(Ct)));
+        }
+        finally
+        {
+            Cleanup(path);
+        }
+    }
+
+    [Fact]
+    public async Task Initialize_DatabaseAtInitialCreateWithData_AddsSimulationLaunchTimeAndKeepsRows()
+    {
+        var path = TempDbPath();
+        try
+        {
+            var factory = new FileFactory(path);
+            var plannedTicks = TestData.T0.UtcTicks;
+            await using (var old = factory.CreateDbContext())
+            {
+                var initialCreate = old.Database.GetMigrations().Single(m => m.EndsWith("_InitialCreate", StringComparison.Ordinal));
+                await old.GetService<IMigrator>().MigrateAsync(initialCreate, Ct);
+                await old.Database.ExecuteSqlAsync(
+                    $"""
+                    INSERT INTO Missions (Id, MissionCode, Name, Description, Status, PlannedLaunchTimeUtc, ActualLaunchTimeUtc, IsSimulated, CreatedAtUtc, UpdatedAtUtc)
+                    VALUES ({Guid.NewGuid()}, {"legacy"}, {"Legacy"}, NULL,{"Completed"}, {plannedTicks}, {plannedTicks}, {true}, {plannedTicks}, {plannedTicks})
+                    """,
+                    Ct);
+            }
+
+            await new DatabaseInitializer(factory, NullLogger<DatabaseInitializer>.Instance).InitializeAsync(Ct);
+
+            await using var db = factory.CreateDbContext();
+            Assert.Empty(await db.Database.GetPendingMigrationsAsync(Ct));
+            Assert.Contains(await db.Database.GetAppliedMigrationsAsync(Ct), m => m.EndsWith("_AddSimulationLaunchTime", StringComparison.Ordinal));
+            var repository = new StarshipMissionTracker.Data.Repositories.MissionRepository(factory, TimeProvider.System, NullLogger<StarshipMissionTracker.Data.Repositories.MissionRepository>.Instance);
+            var info = await repository.GetInfoAsync("legacy", Ct);
+            Assert.NotNull(info);
+            Assert.Null(info.SimulationLaunchTimeUtc);
+            Assert.Equal(TestData.T0, info.PlannedLaunchTimeUtc);
+            Assert.Equal(TestData.T0, info.LaunchTimeUtc);
+            Assert.Equal(StarshipMissionTracker.Core.Enums.MissionStatus.Completed, info.Status);
         }
         finally
         {

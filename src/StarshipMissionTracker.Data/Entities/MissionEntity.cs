@@ -2,7 +2,7 @@ using StarshipMissionTracker.Core.Enums;
 
 namespace StarshipMissionTracker.Data.Entities;
 
-/// <summary>Persistence row of a mission. <see cref="PlannedLaunchTimeUtc"/> is T0 (UTC).</summary>
+/// <summary>Persistence row of a mission. <see cref="PlannedLaunchTimeUtc"/> is the planned T0, <see cref="SimulationLaunchTimeUtc"/> the simulation anchor (UTC).</summary>
 public class MissionEntity
 {
     public Guid Id { get; set; }
@@ -12,6 +12,10 @@ public class MissionEntity
     public MissionStatus Status { get; set; }
     public DateTimeOffset PlannedLaunchTimeUtc { get; set; }
     public DateTimeOffset? ActualLaunchTimeUtc { get; set; }
+
+    /// <summary>Wall launch time of the latest simulated run: the time axis of its stored samples (see MissionInfo.LaunchTimeUtc).</summary>
+    public DateTimeOffset? SimulationLaunchTimeUtc { get; set; }
+
     public bool IsSimulated { get; set; }
     public DateTimeOffset CreatedAtUtc { get; set; }
     public DateTimeOffset UpdatedAtUtc { get; set; }

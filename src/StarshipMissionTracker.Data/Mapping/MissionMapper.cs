@@ -8,9 +8,10 @@ namespace StarshipMissionTracker.Data.Mapping;
 /// <summary>Mission entity graph &lt;-&gt; Core models. The Core constructors re-validate everything read from the database.</summary>
 internal static class MissionMapper
 {
-    public static MissionInfo ToInfo(MissionEntity e) =>
+    /// <summary>The launch site is not a column: the repository derives it from the stored Liftoff event and passes it in.</summary>
+    public static MissionInfo ToInfo(MissionEntity e, (double Latitude, double Longitude)? launchSite = null) =>
         new(e.Id, e.MissionCode, e.Name, e.Description, e.Status, e.PlannedLaunchTimeUtc, e.ActualLaunchTimeUtc, e.IsSimulated, e.UpdatedAtUtc,
-            simulationLaunchTimeUtc: e.SimulationLaunchTimeUtc);
+            launchSite, e.SimulationLaunchTimeUtc);
 
     /// <summary>Needs Vehicles (with Trajectories and Points) and Events loaded. Vehicles without a stored path are left out.</summary>
     public static Mission ToMission(MissionEntity e)

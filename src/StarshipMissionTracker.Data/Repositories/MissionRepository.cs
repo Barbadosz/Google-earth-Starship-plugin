@@ -19,14 +19,15 @@ public sealed class MissionRepository(
         var rows = await db.Missions.AsNoTracking()
             .OrderBy(m => m.PlannedLaunchTimeUtc).ThenBy(m => m.MissionCode)
             .ToListAsync(cancellationToken);
-        return rows.Select(MissionMapper.ToInfo).ToList();
+        var sites = await LaunchSitesAsync(db, cancellationToken);
+        return rows.Select(r => MissionMapper.ToInfo(r, sites.GetValueOrDefault(r.Id))).ToList();
     }
 
     public async Task<MissionInfo?> GetInfoAsync(string missionCode, CancellationToken cancellationToken = default)
     {
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
         var row = await db.Missions.AsNoTracking().FirstOrDefaultAsync(m => m.MissionCode == missionCode, cancellationToken);
-        return row is null ? null : MissionMapper.ToInfo(row);
+        return row is null ? null : MissionMapper.ToInfo(row, (await LaunchSitesAsync(db, cancellationToken, row.Id)).GetValueOrDefault(row.Id));
     }
 
     public async Task<MissionInfo?> GetCurrentInfoAsync(CancellationToken cancellationToken = default)
@@ -38,7 +39,21 @@ public sealed class MissionRepository(
                       .FirstOrDefaultAsync(cancellationToken)
                   ?? await query.OrderByDescending(m => m.PlannedLaunchTimeUtc).ThenBy(m => m.MissionCode)
                       .FirstOrDefaultAsync(cancellationToken);
-        return row is null ? null : MissionMapper.ToInfo(row);
+        return row is null ? null : MissionMapper.ToInfo(row, (await LaunchSitesAsync(db, cancellationToken, row.Id)).GetValueOrDefault(row.Id));
+    }
+
+    /// <summary>Launch site per mission = position of its first positioned Liftoff event (not stored as a column).</summary>
+    private static async Task<Dictionary<Guid, (double Latitude, double Longitude)?>> LaunchSitesAsync(
+        StarshipDbContext db, CancellationToken cancellationToken, Guid? missionId = null)
+    {
+        var rows = await db.MissionEvents.AsNoTracking()
+            .Where(e => e.Type == EventType.Liftoff && e.Latitude != null && e.Longitude != null
+                        && (missionId == null || e.MissionId == missionId))
+            .OrderBy(e => e.OffsetSeconds)
+            .Select(e => new { e.MissionId, Lat = e.Latitude!.Value, Lon = e.Longitude!.Value })
+            .ToListAsync(cancellationToken);
+        return rows.GroupBy(r => r.MissionId)
+            .ToDictionary(g => g.Key, g => ((double Latitude, double Longitude)?)(g.First().Lat, g.First().Lon));
     }
 
     public async Task<Mission?> GetPlannedMissionAsync(string missionCode, CancellationToken cancellationToken = default)

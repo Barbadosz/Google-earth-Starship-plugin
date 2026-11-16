@@ -32,6 +32,23 @@ public class MissionRepositoryTests
     }
 
     [Fact]
+    public async Task Info_CarriesTheLaunchSiteOfTheLiftoffEvent()
+    {
+        using var db = await TestDatabase.CreateAsync();
+        await db.Missions.ImportAsync(TestData.Mission(), isSimulated: true, Ct);
+
+        var info = await db.Missions.GetInfoAsync(TestData.Code, Ct);
+        var current = await db.Missions.GetCurrentInfoAsync(Ct);
+        var listed = Assert.Single(await db.Missions.ListAsync(Ct));
+
+        foreach (var i in new[] { info, current, listed })
+        {
+            Assert.NotNull(i);
+            Assert.Equal((25.9972, -97.1566), i.LaunchSite);
+        }
+    }
+
+    [Fact]
     public async Task Import_SimulatedData_IsNeverStoredAsMeasured()
     {
         using var db = await TestDatabase.CreateAsync();

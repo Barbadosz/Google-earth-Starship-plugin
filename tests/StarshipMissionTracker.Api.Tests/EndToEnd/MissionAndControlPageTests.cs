@@ -125,7 +125,7 @@ public class MissionAndControlPageTests
         await AssertPlannedUnchangedAsync(host);
     }
 
-    [Fact(Skip = "N-41: MissionMapper.ToInfo drops launchSite")]
+    [Fact]
     public async Task MasterKml_HasALookAtWithTheEffectiveT0_BeforeAndAfterAT0Change()
     {
         await using var host = EndToEndHost.Start();
@@ -133,7 +133,8 @@ public class MissionAndControlPageTests
         async Task AssertLookAtAsync(string expectedT0)
         {
             var master = await host.KmlAsync("master");
-            var lookAt = master.Descendants(EndToEndHost.K("LookAt")).FirstOrDefault();
+            var lookAt = master.Descendants(EndToEndHost.K("LookAt"))
+                .FirstOrDefault(l => l.Element(EndToEndHost.G("TimeStamp")) is not null);
             Assert.NotNull(lookAt);
             var when = lookAt.Element(EndToEndHost.G("TimeStamp"))?.Element(EndToEndHost.K("when"))?.Value;
             Assert.Equal(expectedT0, when);

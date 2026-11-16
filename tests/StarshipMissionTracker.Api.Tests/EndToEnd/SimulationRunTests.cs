@@ -23,7 +23,11 @@ public class SimulationRunTests
         Assert.Equal(-10, Offset(started), Tolerance);
         Assert.Equal("Simulated", started.GetProperty("dataQuality").GetString());
         Assert.Equal(0, EndToEndHost.PointCount(await host.KmlAsync("history")));
-        Assert.Null(EndToEndHost.LiveLongitude(await host.KmlAsync("live"), "Starship"));
+        // N-49: countdown -> the model stands at the planned pad position, labelled as planned, with no telemetry sample.
+        var countdownLive = await host.KmlAsync("live");
+        Assert.NotNull(EndToEndHost.LiveLongitude(countdownLive, "Starship"));
+        Assert.Contains("countdown, planned pad position", countdownLive.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("SampleTimeUtc", countdownLive.ToString(), StringComparison.Ordinal);
 
         await host.AdvanceAsync(10);
         await host.AdvanceAsync(5);

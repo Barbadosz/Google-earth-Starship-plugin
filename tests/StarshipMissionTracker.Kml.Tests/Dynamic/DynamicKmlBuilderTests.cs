@@ -421,11 +421,64 @@ public class DynamicKmlBuilderTests
     }
 
     [Fact]
-    public void Live_VehicleWithoutSample_ShowsWaiting_AndNoPlacemark()
+    public void Live_VehicleWithoutSample_ShowsWaiting_AndNoPlacemark_WhenNoPlannedPoint()
+    {
+        var doc = Parse(LiveDoc([Live(Starship(Path(TrajectoryType.Actual, 2)), null, ageSeconds: null)]));
+
+        Assert.Empty(doc.Descendants(K + "Placemark"));
+        Assert.Contains("Waiting for liftoff", doc.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Live_VehicleWithoutSample_ShowsModelAtPlannedPad_LabelledAsPlanned()
     {
         var doc = Parse(LiveDoc([Live(Starship(Path(TrajectoryType.Planned, 2)), null, ageSeconds: null)]));
 
+        var placemarks = doc.Descendants(K + "Placemark").ToList();
+        Assert.Equal(2, placemarks.Count);
+        Assert.Single(doc.Descendants(K + "Model"));
+        Assert.All(placemarks, p => Assert.Contains("countdown, planned pad position", p.Element(K + "name")!.Value, StringComparison.Ordinal));
+        Assert.All(placemarks, p => Assert.Contains("SIMULATED", p.Element(K + "name")!.Value, StringComparison.Ordinal));
+        var text = doc.ToString();
+        Assert.Contains("not telemetry", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("SampleTimeUtc", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("Waiting for liftoff", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Live_PadPlacemark_UsesNeutralIconStyle_AndPlannedDataQuality()
+    {
+        var doc = Parse(LiveDoc([Live(Starship(Path(TrajectoryType.Planned, 2, DataQuality.Published)), null, ageSeconds: null)]));
+
+        var icon = doc.Descendants(K + "Placemark").Single(p => p.Element(K + "styleUrl") is not null);
+        Assert.Equal("#icon-starship", icon.Element(K + "styleUrl")!.Value);
+        var text = doc.ToString();
+        Assert.Contains("Planned (countdown pad position)", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("Published", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("test source", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Live_PadPlacemark_UsesTheLowestOffsetOfAllPlannedPaths()
+    {
+        var later = new FlightPath(TrajectoryType.Planned, DataQuality.Simulated, "s", "MIT", [Pt(5, 27, -90, 0)]);
+        var earliest = new FlightPath(TrajectoryType.Reconstructed, DataQuality.Simulated, "s", "MIT", [Pt(2, 28, -91, 0), Pt(8, 29, -92, 0)]);
+
+        var doc = Parse(LiveDoc([Live(Starship(later, earliest), null, ageSeconds: null)]));
+
+        var point = doc.Descendants(K + "Point").Single().Element(K + "coordinates")!.Value;
+        Assert.StartsWith("-91.000000,28.000000", point, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Live_LatestWithoutPosition_IsNotShownAsCountdownPad()
+    {
+        var noPosition = new TelemetrySample(VehicleType.Starship, Now, Now, null, null, null, 10, null, null, null, DataQuality.Simulated, "Internal simulator");
+
+        var doc = Parse(LiveDoc([Live(Starship(Path(TrajectoryType.Planned, 2)), noPosition)]));
+
         Assert.Empty(doc.Descendants(K + "Placemark"));
+        Assert.DoesNotContain("countdown", doc.ToString(), StringComparison.Ordinal);
         Assert.Contains("Waiting for liftoff", doc.ToString(), StringComparison.Ordinal);
     }
 

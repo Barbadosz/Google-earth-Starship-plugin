@@ -22,6 +22,11 @@ internal static class LiveVehicleGenerator
 
     public const string WaitingText = "Waiting for liftoff";
 
+    /// <summary>Name suffix of a vehicle shown at its planned pad position before the first telemetry sample.</summary>
+    public const string PadSuffix = " (countdown, planned pad position)";
+
+    public const string PadQuality = "Planned (countdown pad position)";
+
     public static XElement CreateFolder(MissionInfo info, IReadOnlyList<LiveVehicleState> vehicles, KmlAssetUrls assets)
     {
         // T+ source: the effective T0 (simulation anchor, else planned), the same T0 as the planned document, its events and
@@ -41,6 +46,16 @@ internal static class LiveVehicleGenerator
                     ModelPlacemark(state.Vehicle, sample, name, description, assets),
                     IconPlacemark(state.Vehicle, sample, name + " icon", description));
             }
+            else if (state.Latest is null && PadSample(state.Vehicle, t0) is { } pad)
+            {
+                // N-49: no telemetry yet (countdown) -> the model stands on the pad at the first planned point. It is the
+                // planned position, labelled as such; no sample, velocity or "latest" is invented.
+                var name = state.Vehicle.Name + (info.IsSimulated ? " (SIMULATED)" : string.Empty) + PadSuffix;
+                var description = PadDescription(info, name);
+                vehicleFolder.Add(
+                    ModelPlacemark(state.Vehicle, pad, name, description, assets, PadExtended(state.Vehicle)),
+                    IconPlacemark(state.Vehicle, pad, name + " icon", description, PadExtended(state.Vehicle)));
+            }
             else
             {
                 vehicleFolder.Add(K("description", WaitingText));
@@ -52,7 +67,7 @@ internal static class LiveVehicleGenerator
         return folder;
     }
 
-    private static XElement ModelPlacemark(Vehicle vehicle, TelemetrySample s, string name, string description, KmlAssetUrls assets)
+    private static XElement ModelPlacemark(Vehicle vehicle, TelemetrySample s, string name, string description, KmlAssetUrls assets, XElement? extended = null)
     {
         var lat = s.Latitude!.Value;
         var lon = s.Longitude!.Value;
@@ -77,16 +92,16 @@ internal static class LiveVehicleGenerator
             K("name", name),
             K("description", Cdata(description)),
             Region(BoxCorners(s), KmlLod.ModelMinLodPixels, KmlLod.ModelMaxLodPixels),
-            Extended(vehicle, s),
+            extended ?? Extended(vehicle, s),
             model);
     }
 
-    private static XElement IconPlacemark(Vehicle vehicle, TelemetrySample s, string name, string description) =>
+    private static XElement IconPlacemark(Vehicle vehicle, TelemetrySample s, string name, string description, XElement? extended = null) =>
         K("Placemark",
             K("name", name),
             K("description", Cdata(description)),
             K("styleUrl", "#" + KmlLod.IconStyleId(vehicle.Type)),
-            Extended(vehicle, s),
+            extended ?? Extended(vehicle, s),
             K("Point",
                 K("altitudeMode", s.AltitudeMeters.HasValue ? "absolute" : "clampToGround"),
                 K("coordinates", Coordinates(s.Latitude!.Value, s.Longitude!.Value, s.AltitudeMeters))));
@@ -97,6 +112,32 @@ internal static class LiveVehicleGenerator
             ("DataQuality", s.Quality.ToString()),
             ("Source", s.SourceName),
             ("SampleTimeUtc", Utc(s.TimestampUtc)));
+
+    /// <summary>Pad placemark data: explicitly planned, never the planned point's quality/source (could read as measured).</summary>
+    private static XElement PadExtended(Vehicle vehicle) =>
+        ExtendedData(
+            ("Vehicle", vehicle.Name),
+            ("DataQuality", PadQuality),
+            ("Position", "Planned launch pad position (countdown), not telemetry"));
+
+    /// <summary>The vehicle's first planned point as a position-only pseudo sample (null when it has no planned point).</summary>
+    private static TelemetrySample? PadSample(Vehicle vehicle, DateTimeOffset t0)
+    {
+        var first = vehicle.FlightPaths
+            .Where(p => p.Type != TrajectoryType.Actual && p.Points.Count > 0)
+            .Select(p => p.Points.MinBy(pt => pt.OffsetSeconds)!)
+            .MinBy(pt => pt.OffsetSeconds);
+        return first is null
+            ? null
+            : new TelemetrySample(
+                vehicle.Type, t0, t0, first.Latitude, first.Longitude, first.AltitudeMeters, null,
+                first.HeadingDegrees, first.PitchDegrees, first.RollDegrees, first.Quality, first.SourceName);
+    }
+
+    private static string PadDescription(MissionInfo info, string name) =>
+        "<p><b>" + Html(name) + "</b></p>"
+        + "<p>Countdown: no telemetry yet. The vehicle is drawn at its planned launch pad position (planned data, not a measurement).</p>"
+        + (info.IsSimulated ? "<p>Simulated mission – not live telemetry.</p>" : string.Empty);
 
     private static string Description(MissionInfo info, string name, LiveVehicleState state, TelemetrySample s, DateTimeOffset t0)
     {

@@ -121,7 +121,10 @@ public class LiveStaleTests
         Assert.Equal(2, app.Kml.LiveStates!.Count);
         Assert.All(app.Kml.LiveStates, s => Assert.Null(s.Latest));
         Assert.All(app.Kml.LiveStates, s => Assert.False(s.IsStale));
-        Assert.Contains("Waiting for liftoff", body, StringComparison.Ordinal);
+        // N-49: during the countdown the model stands at the planned pad position, labelled as planned (not telemetry).
+        Assert.Contains("countdown, planned pad position", body, StringComparison.Ordinal);
+        Assert.Contains("<Model>", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("SampleTimeUtc", body, StringComparison.Ordinal);
     }
 
     [Fact]

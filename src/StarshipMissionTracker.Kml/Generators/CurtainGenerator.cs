@@ -6,29 +6,35 @@ namespace StarshipMissionTracker.Kml.Generators;
 
 /// <summary>
 /// Toggleable "Flight path curtain" layer (N-39a): the vertical extrude walls under the flight path as their own
-/// folder, so the path line itself can be emitted without extrude. The curtain duplicates the path coordinates.
+/// folder, so the path line itself can be emitted without extrude. The curtain uses the same thinned display points
+/// as the path line (N-20).
 /// </summary>
 internal static class CurtainGenerator
 {
     /// <summary>
     /// Folder <c>id=curtain</c>, name "Flight path curtain", style <c>#toggle-folder</c>, one curtain Placemark per
-    /// (vehicle, path). Paths without points are skipped (no empty LineString).
+    /// (vehicle, path). Paths without points are skipped (no empty LineString). <paramref name="displayPoints"/> returns
+    /// the already thinned points of a path; null thins each path here.
     /// </summary>
-    public static XElement CreateFolder(IEnumerable<(Vehicle Vehicle, FlightPath Path)> paths)
+    public static XElement CreateFolder(
+        IEnumerable<(Vehicle Vehicle, FlightPath Path)> paths,
+        Func<FlightPath, IReadOnlyList<TrajectoryPoint>>? displayPoints = null)
     {
         ArgumentNullException.ThrowIfNull(paths);
         return K("Folder",
             new XAttribute("id", KmlLod.FolderId.Curtain),
             K("name", KmlLod.FolderName.FlightCurtain),
             K("styleUrl", "#" + KmlLod.ToggleStyleId.ToggleFolder),
-            paths.Where(p => p.Path.Points.Count > 0).Select(p => CreatePlacemark(p.Vehicle, p.Path)));
+            paths.Where(p => p.Path.Points.Count > 0)
+                .Select(p => CreatePlacemark(p.Vehicle, p.Path, displayPoints?.Invoke(p.Path))));
     }
 
     /// <summary>
     /// Placemark with an extruded LineString (absolute, extrude 1, tessellate 0) and the curtain style; the
-    /// coordinates are identical to <see cref="PlannedPathGenerator"/>'s. Throws if the path has no points.
+    /// coordinates are identical to <see cref="PlannedPathGenerator"/>'s (same thinning). Throws if the path has no points.
     /// </summary>
-    public static XElement CreatePlacemark(Vehicle vehicle, FlightPath path)
+    public static XElement CreatePlacemark(
+        Vehicle vehicle, FlightPath path, IReadOnlyList<TrajectoryPoint>? displayPoints = null)
     {
         ArgumentNullException.ThrowIfNull(vehicle);
         ArgumentNullException.ThrowIfNull(path);
@@ -39,7 +45,8 @@ internal static class CurtainGenerator
 
         var coordinates = string.Join(
             " ",
-            path.Points.Select(p => Coordinates(p.Latitude, p.Longitude, p.AltitudeMeters)));
+            KmlPathInfo.ResolveDisplayPoints(path, displayPoints)
+                .Select(p => Coordinates(p.Latitude, p.Longitude, p.AltitudeMeters)));
 
         return K("Placemark",
             K("name", $"{vehicle.Name} – {KmlPathInfo.Kind(path)} curtain"),

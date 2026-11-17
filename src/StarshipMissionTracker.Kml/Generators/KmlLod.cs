@@ -19,6 +19,13 @@ public static class KmlLod
     /// <summary>-1 = no upper limit (tune in GE Pro, N-9).</summary>
     public const int ModelMaxLodPixels = -1;
 
+    /// <summary>
+    /// N-20: maximum 3D distance (metres) between a point dropped from a display line (trail, planned/actual path,
+    /// curtain) and the position interpolated in time between its kept neighbours (see <c>TrackThinner</c>).
+    /// Model and icon tracks are never thinned.
+    /// </summary>
+    public const double TrailToleranceMeters = 8.0;
+
     /// <summary>Style IDs (without the leading '#') that <c>KmlStyles</c> must define.</summary>
     public static class StyleId
     {

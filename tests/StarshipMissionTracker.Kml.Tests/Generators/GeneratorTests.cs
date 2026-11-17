@@ -114,14 +114,22 @@ public class GeneratorTests
     }
 
     [Fact]
-    public void GxTrack_CompleteOrientation_WritesAnglesWithTiltFromPitch_AndDerivedNote()
+    public void GxTrack_CompleteOrientation_AnglesOnlyOnModelTrack_AndDerivedNoteOnModelOnly()
     {
         var path = Path(Pt(0, 25.9, -97.1, 0, 90, 80, 0), Pt(10, 25.91, -97.0, 100, 91, 70, 5));
-        var placemark = GxTrackGenerator.CreatePlacemark(Starship(path), path, Clock);
-        var angles = placemark.Element(Gx + "Track")!.Elements(Gx + "angles").Select(e => e.Value).ToList();
+        var vehicle = Starship(path, "models/starship.dae");
 
+        var model = VehicleGenerator.CreateModelPlacemark(vehicle, path, Clock);
+        var angles = model.Element(Gx + "Track")!.Elements(Gx + "angles").Select(e => e.Value).ToList();
         Assert.Equal(new[] { "90.00 10.00 0.00", "91.00 20.00 5.00" }, angles);
-        Assert.Contains("derived from the direction of travel", placemark.Element(K + "description")!.Value);
+        Assert.Contains("derived from the direction of travel", model.Element(K + "description")!.Value);
+
+        // Trail and icon have no Model, so gx:angles would be ignored by Google Earth: not written.
+        var trail = GxTrackGenerator.CreatePlacemark(vehicle, path, Clock);
+        Assert.Empty(trail.Element(Gx + "Track")!.Elements(Gx + "angles"));
+        var icon = VehicleGenerator.CreateIconPlacemark(vehicle, path, Clock);
+        Assert.Empty(icon.Element(Gx + "Track")!.Elements(Gx + "angles"));
+        Assert.DoesNotContain("derived from the direction of travel", icon.Element(K + "description")!.Value);
     }
 
     [Fact]
@@ -129,7 +137,7 @@ public class GeneratorTests
     {
         // Second point has no orientation, third only a heading: nothing is written, nothing is invented.
         var path = Path(Pt(0, 25.9, -97.1, 0, 90, 80, 0), Pt(10, 25.91, -97.0, 100), Pt(20, 25.92, -96.9, 200, heading: 90));
-        var placemark = GxTrackGenerator.CreatePlacemark(Starship(path), path, Clock);
+        var placemark = VehicleGenerator.CreateModelPlacemark(Starship(path, "models/starship.dae"), path, Clock);
 
         Assert.Empty(placemark.Element(Gx + "Track")!.Elements(Gx + "angles"));
         Assert.DoesNotContain("derived from the direction of travel", placemark.Element(K + "description")!.Value);

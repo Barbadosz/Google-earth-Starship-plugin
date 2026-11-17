@@ -13,26 +13,40 @@ namespace StarshipMissionTracker.Kml.Generators;
 /// </summary>
 public static class GxTrackGenerator
 {
-    /// <summary>Trail Placemark: TimeSpan T0..last point and a gx:Track without a model.</summary>
-    public static XElement CreatePlacemark(Vehicle vehicle, FlightPath path, LaunchClock clock)
+    /// <summary>
+    /// Trail Placemark: TimeSpan T0..last point and a gx:Track without a model. The trail is a display line, so it is
+    /// thinned (N-20): <paramref name="displayPoints"/> are the already thinned points of <paramref name="path"/>
+    /// (null thins here with <see cref="KmlLod.TrailToleranceMeters"/>). First and last point are always kept.
+    /// </summary>
+    public static XElement CreatePlacemark(
+        Vehicle vehicle, FlightPath path, LaunchClock clock, IReadOnlyList<TrajectoryPoint>? displayPoints = null)
     {
         ArgumentNullException.ThrowIfNull(vehicle);
         ArgumentNullException.ThrowIfNull(path);
         ArgumentNullException.ThrowIfNull(clock);
+        if (path.Points.Count == 0)
+        {
+            throw new ArgumentException("The flight path has no points.", nameof(path));
+        }
 
+        var points = KmlPathInfo.ResolveDisplayPoints(path, displayPoints);
         return K("Placemark",
             K("name", $"{vehicle.Name} – {KmlPathInfo.Kind(path)} track"),
-            K("description", KmlPathInfo.Description(path)),
-            Span(path, clock, vehicle.Name),
+            K("description", KmlPathInfo.Description(path, KmlPathInfo.IsSimplified(path, points))),
+            Span(path, points, clock, vehicle.Name),
             K("styleUrl", "#" + KmlLod.PathStyleId(path.Type, vehicle.Type, path.Quality)),
             KmlPathInfo.Extended(vehicle, path),
-            CreateTrack(path, clock, model: null, vehicle.Name));
+            CreateTrack(path, points, clock, model: null, vehicle.Name));
     }
 
     /// <summary>TimeSpan from the first to the last point, in the same format as the track's <c>when</c> values.</summary>
-    internal static XElement Span(FlightPath path, LaunchClock clock, string? vehicleName = null)
+    internal static XElement Span(FlightPath path, LaunchClock clock, string? vehicleName = null) =>
+        Span(path, path.Points, clock, vehicleName);
+
+    /// <summary>TimeSpan of a track written from <paramref name="points"/> (a subset of the path's points).</summary>
+    internal static XElement Span(FlightPath path, IReadOnlyList<TrajectoryPoint> points, LaunchClock clock, string? vehicleName = null)
     {
-        var t = Times(path, clock, vehicleName);
+        var t = Times(path, points, clock, vehicleName);
         return K("TimeSpan", K("begin", t.Begin), K("end", t.End));
     }
 
@@ -42,9 +56,18 @@ public static class GxTrackGenerator
     /// in any format and are rejected.
     /// </summary>
     internal static (List<string> Whens, string Begin, string End) Times(
-        FlightPath path, LaunchClock clock, string? vehicleName = null)
+        FlightPath path, LaunchClock clock, string? vehicleName = null) =>
+        Times(path, path.Points, clock, vehicleName);
+
+    /// <summary>
+    /// Same as <see cref="Times(FlightPath, LaunchClock, string?)"/> for the points actually written (the full path or
+    /// its thinned display points), so the precision fits exactly the <c>when</c> values of that track.
+    /// <paramref name="path"/> only names the source in the error message.
+    /// </summary>
+    internal static (List<string> Whens, string Begin, string End) Times(
+        FlightPath path, IReadOnlyList<TrajectoryPoint> points, LaunchClock clock, string? vehicleName = null)
     {
-        var offsets = path.Points.Select(p => p.OffsetSeconds).ToList();
+        var offsets = points.Select(p => p.OffsetSeconds).ToList();
         var ms = NeedsMilliseconds(offsets);
         Func<double, string> format = o => clock.Format(o, ms);
         var whens = offsets.Select(format).ToList();
@@ -71,30 +94,44 @@ public static class GxTrackGenerator
     private static bool HasDuplicates(List<string> whens) =>
         whens.Distinct(StringComparer.Ordinal).Count() != whens.Count;
 
-    /// <summary>The gx:Track element (altitudeMode, when*, gx:coord*, gx:angles*, Model).</summary>
-    internal static XElement CreateTrack(FlightPath path, LaunchClock clock, XElement? model, string? vehicleName = null)
+    /// <summary>
+    /// The gx:Track element (altitudeMode, when*, gx:coord*, gx:angles*, Model). gx:angles only rotate a Model, so
+    /// they are written only when <paramref name="includeAngles"/> is true (the model track); trail and icon tracks
+    /// omit them (dead weight, Google Earth ignores them without a Model).
+    /// </summary>
+    internal static XElement CreateTrack(
+        FlightPath path, LaunchClock clock, XElement? model, string? vehicleName = null, bool includeAngles = false) =>
+        CreateTrack(path, path.Points, clock, model, vehicleName, includeAngles);
+
+    /// <summary>
+    /// Same gx:Track written from <paramref name="points"/>: the full path (model and icon, N-20) or its thinned display
+    /// points (trail). when, coord and angles all come from the same list.
+    /// </summary>
+    internal static XElement CreateTrack(
+        FlightPath path, IReadOnlyList<TrajectoryPoint> points, LaunchClock clock, XElement? model,
+        string? vehicleName = null, bool includeAngles = false)
     {
-        if (path.Points.Count == 0)
+        if (points.Count == 0)
         {
             throw new ArgumentException("The flight path has no points.", nameof(path));
         }
 
         var track = G("Track", K("altitudeMode", "absolute"));
-        foreach (var when in Times(path, clock, vehicleName).Whens)
+        foreach (var when in Times(path, points, clock, vehicleName).Whens)
         {
             track.Add(K("when", when));
         }
 
-        foreach (var p in path.Points)
+        foreach (var p in points)
         {
             track.Add(G("coord", GxCoordinates(p)));
         }
 
         // All-or-nothing: a missing orientation is never written as 0 (that would show an upright model
         // on a horizontal path). Package H fills gaps with OrientationCalculator.FillMissing beforehand.
-        if (KmlPathInfo.HasAngles(path))
+        if (includeAngles && KmlPathInfo.HasAngles(points))
         {
-            foreach (var p in path.Points)
+            foreach (var p in points)
             {
                 track.Add(G("angles", Angles(p)));
             }

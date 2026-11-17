@@ -65,14 +65,16 @@ public sealed class DynamicKmlBuilder : IDynamicKmlBuilder
             K("name", KmlLod.FolderName.PlannedTrajectory),
             K("description", "Planned / Reconstructed – not live telemetry."));
         var vehicles = mission.Vehicles.OrderBy(v => v.Type).ToList();
+        var display = DisplayPoints(vehicles.SelectMany(v => v.FlightPaths.Where(IsPlannedPath)));
         foreach (var vehicle in vehicles)
         {
-            AddPaths(planned, vehicle, vehicle.FlightPaths.Where(IsPlannedPath), densified, extrude: false);
+            AddPaths(planned, vehicle, vehicle.FlightPaths.Where(IsPlannedPath), densified, extrude: false, display);
         }
 
         // N-39a: the curtain of the planned path is its own toggle folder (same paths, no densification note).
         var curtain = CurtainGenerator.CreateFolder(
-            vehicles.SelectMany(v => v.FlightPaths.Where(IsPlannedPath).Select(p => (v, p))));
+            vehicles.SelectMany(v => v.FlightPaths.Where(IsPlannedPath).Select(p => (v, p))),
+            p => display[p]);
 
         var document = K("Document",
             K("name", $"Planned trajectory & events – {info.Name}"),
@@ -103,9 +105,10 @@ public sealed class DynamicKmlBuilder : IDynamicKmlBuilder
             K("name", KmlLod.FolderName.ActualTrajectory),
             K("description", "Actual-type paths (see the quality note on each path). Empty when no actual trajectory is available."));
         var empty = new HashSet<FlightPath>();
+        var display = DisplayPoints(vehiclesWithActualPath.SelectMany(v => v.FlightPaths.Where(p => p.Type == TrajectoryType.Actual)));
         foreach (var vehicle in vehiclesWithActualPath.OrderBy(v => v.Type))
         {
-            AddPaths(actual, vehicle, vehicle.FlightPaths.Where(p => p.Type == TrajectoryType.Actual), empty, extrude: true);
+            AddPaths(actual, vehicle, vehicle.FlightPaths.Where(p => p.Type == TrajectoryType.Actual), empty, extrude: true, display);
         }
 
         var document = K("Document",
@@ -182,17 +185,30 @@ public sealed class DynamicKmlBuilder : IDynamicKmlBuilder
         }
     }
 
+    /// <summary>N-20: each non-empty path thinned once per build (by reference), shared by the line and the curtain.</summary>
+    private static Dictionary<FlightPath, IReadOnlyList<TrajectoryPoint>> DisplayPoints(IEnumerable<FlightPath> paths)
+    {
+        var display = new Dictionary<FlightPath, IReadOnlyList<TrajectoryPoint>>(ReferenceEqualityComparer.Instance);
+        foreach (var path in paths.Where(p => p.Points.Count > 0))
+        {
+            display.TryAdd(path, KmlPathInfo.DisplayPoints(path));
+        }
+
+        return display;
+    }
+
     /// <summary>
     /// Path Placemarks (one per path) in a vehicle sub-folder; paths without points are skipped, empty vehicles omitted.
     /// <paramref name="extrude"/> false for planned paths (their curtain is the toggle folder); actual paths stay extruded.
     /// </summary>
     private static void AddPaths(
-        XElement parent, Vehicle vehicle, IEnumerable<FlightPath> paths, IReadOnlySet<FlightPath> densified, bool extrude)
+        XElement parent, Vehicle vehicle, IEnumerable<FlightPath> paths, IReadOnlySet<FlightPath> densified, bool extrude,
+        Dictionary<FlightPath, IReadOnlyList<TrajectoryPoint>> display)
     {
         var vehicleFolder = K("Folder", K("name", VehicleFolderName(vehicle.Type)));
         foreach (var path in paths.Where(p => p.Points.Count > 0))
         {
-            var placemark = PlannedPathGenerator.CreatePlacemark(vehicle, path, extrude);
+            var placemark = PlannedPathGenerator.CreatePlacemark(vehicle, path, extrude, display[path]);
             if (densified.Contains(path))
             {
                 var description = placemark.Element(KmlXml.Kml + "description")!;

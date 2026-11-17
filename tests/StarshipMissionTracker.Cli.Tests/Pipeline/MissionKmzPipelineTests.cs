@@ -58,6 +58,23 @@ public sealed class MissionKmzPipelineTests : IDisposable
         XDocument.Parse(System.Text.Encoding.UTF8.GetString(entries["doc.kml"]));
 
     [Fact]
+    public async Task BuildAsync_DemoData_ThinsTheTrailOfAtLeastOnePath()
+    {
+        var (_, entries) = await BuildInMemoryAsync(DemoOptions(Override));
+
+        var trails = DocKml(entries).Descendants(K + "Placemark")
+            .Where(p => p.Element(K + "name")!.Value.EndsWith(" track", StringComparison.Ordinal) && p.Descendants(Gx + "Track").Any())
+            .Select(p => (
+                Source: int.Parse(p.Descendants(K + "Data").Single(d => d.Attribute("name")!.Value == "PointCount").Element(K + "value")!.Value),
+                Display: p.Descendants(Gx + "coord").Count()))
+            .ToList();
+
+        Assert.NotEmpty(trails);
+        Assert.All(trails, t => Assert.True(t.Display <= t.Source));
+        Assert.Contains(trails, t => t.Display < t.Source);
+    }
+
+    [Fact]
     public async Task BuildAsync_DemoData_KmzHasDocAndExpectedFiles()
     {
         var (result, entries) = await BuildInMemoryAsync(DemoOptions(Override));
@@ -217,6 +234,39 @@ public sealed class MissionKmzPipelineTests : IDisposable
         using var reader = new StreamReader(zip.GetEntry("doc.kml")!.Open());
         var sparse = await reader.ReadToEndAsync(TestContext.Current.CancellationToken);
         Assert.DoesNotContain("Densified", sparse);
+    }
+
+    /// <summary>N-20 size regression: demo-ift doc.kml was ~925 KB before angles were dropped and display lines thinned.</summary>
+    public const int MaxDemoKmlBytes = 650 * 1024;
+
+    [Fact]
+    public async Task BuildAsync_DemoData_KmlUnderSizeLimit_ModelAndIconTracksAtFullResolution()
+    {
+        var mission = await CreatePipeline().LoadAndPrepareAsync(DemoOptions(Override), TestContext.Current.CancellationToken);
+        var (_, entries) = await BuildInMemoryAsync(DemoOptions(Override));
+
+        var size = entries["doc.kml"].Length;
+        Assert.True(size < MaxDemoKmlBytes, $"doc.kml is {size} bytes, limit {MaxDemoKmlBytes}.");
+
+        var doc = DocKml(entries);
+        foreach (var vehicle in mission.Vehicles)
+        {
+            var source = StarshipMissionTracker.Kml.MissionKmlBuilder.FollowedPath(vehicle).Points.Count;
+            foreach (var name in new[] { $"{vehicle.Name} 3D Model", $"{vehicle.Name} Icon" })
+            {
+                var placemark = doc.Descendants(K + "Placemark").Single(p => p.Element(K + "name")?.Value == name);
+                var track = placemark.Element(Gx + "Track")!;
+                Assert.Equal(source, track.Elements(Gx + "coord").Count());
+                Assert.Equal(source, track.Elements(K + "when").Count());
+            }
+
+            // The display lines (trail, path, curtain) are thinned but never longer than the source.
+            var trail = doc.Descendants(K + "Placemark")
+                .Single(p => p.Element(K + "name")?.Value.StartsWith($"{vehicle.Name} – ", StringComparison.Ordinal) == true
+                             && p.Element(K + "name")!.Value.EndsWith(" track", StringComparison.Ordinal));
+            var trailPoints = trail.Element(Gx + "Track")!.Elements(Gx + "coord").Count();
+            Assert.InRange(trailPoints, 2, source);
+        }
     }
 
     private string CopyDemoDataWithModelPaths(string starshipModel, string boosterModel)

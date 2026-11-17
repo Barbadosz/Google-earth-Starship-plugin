@@ -32,16 +32,28 @@ public sealed class MissionKmlBuilder : IMissionKmlBuilder
 
     private readonly TrajectoryDensificationOptions? _densification;
     private readonly IReadOnlySet<FlightPath>? _densifiedPaths;
+    private readonly Action<ThinnedPath>? _onPathThinned;
+
+    /// <summary>N-20: point counts of one display line (trail, path, curtain) before and after thinning. Counts only, no data values.</summary>
+    public sealed record ThinnedPath(string VehicleName, string SourceName, TrajectoryType Type, int SourcePoints, int DisplayPoints);
 
     /// <param name="densification">The options the caller densified the paths with, or null if the paths were not densified.</param>
     /// <param name="densifiedPaths">
     /// The paths (compared by reference) that really got points inserted. Only those path/track descriptions say
     /// that inserted points are interpolated and the quality is at most Estimated; no note without both arguments.
     /// </param>
-    public MissionKmlBuilder(TrajectoryDensificationOptions? densification = null, IReadOnlySet<FlightPath>? densifiedPaths = null)
+    /// <param name="onPathThinned">
+    /// Called once per non-empty path with its display-line point counts (N-20), in document order. The Kml library does
+    /// not log; the caller (CLI) logs these at Debug.
+    /// </param>
+    public MissionKmlBuilder(
+        TrajectoryDensificationOptions? densification = null,
+        IReadOnlySet<FlightPath>? densifiedPaths = null,
+        Action<ThinnedPath>? onPathThinned = null)
     {
         _densification = densification;
         _densifiedPaths = densifiedPaths;
+        _onPathThinned = onPathThinned;
     }
 
     public string Build(Mission mission) => Serialize(BuildDocument(mission));
@@ -51,6 +63,7 @@ public sealed class MissionKmlBuilder : IMissionKmlBuilder
     {
         ArgumentNullException.ThrowIfNull(mission);
         var clock = mission.Clock;
+        var display = DisplayPoints(mission);
 
         var document = K("Document",
             K("name", $"{DocumentTitle} – {mission.Name}"),
@@ -60,11 +73,12 @@ public sealed class MissionKmlBuilder : IMissionKmlBuilder
             KmlStyles.CreateAll(),
             KmlStyles.CreateToggleStyles(),
             MissionInformationFolder(mission),
-            TrajectoryFolder(mission, KmlLod.FolderName.PlannedTrajectory, IsPlannedFolderPath,
+            TrajectoryFolder(mission, display, KmlLod.FolderName.PlannedTrajectory, IsPlannedFolderPath,
                 "Planned / Reconstructed – not live telemetry.", extrude: false),
-            CurtainGenerator.CreateFolder(OrderedVehicles(mission)
-                .SelectMany(v => v.FlightPaths.Where(IsPlannedFolderPath).Select(p => (v, p)))),
-            TrajectoryFolder(mission, KmlLod.FolderName.ActualTrajectory, p => p.Type == TrajectoryType.Actual,
+            CurtainGenerator.CreateFolder(
+                OrderedVehicles(mission).SelectMany(v => v.FlightPaths.Where(IsPlannedFolderPath).Select(p => (v, p))),
+                p => display[p]),
+            TrajectoryFolder(mission, display, KmlLod.FolderName.ActualTrajectory, p => p.Type == TrajectoryType.Actual,
                 "Actual-type paths (see the quality note on each path). Empty when no actual trajectory is available.",
                 extrude: true),
             VehiclesFolder(mission),
@@ -78,11 +92,42 @@ public sealed class MissionKmlBuilder : IMissionKmlBuilder
 
     private static bool IsPlannedFolderPath(FlightPath path) => path.Type != TrajectoryType.Actual;
 
+    /// <summary>
+    /// N-20: each non-empty path thinned once (by reference) for its display lines: path LineString, trail and curtain.
+    /// The model and icon tracks (VehiclesFolder) always use the full-resolution points.
+    /// </summary>
+    private Dictionary<FlightPath, IReadOnlyList<TrajectoryPoint>> DisplayPoints(Mission mission)
+    {
+        var display = new Dictionary<FlightPath, IReadOnlyList<TrajectoryPoint>>(ReferenceEqualityComparer.Instance);
+        foreach (var vehicle in OrderedVehicles(mission))
+        {
+            foreach (var path in vehicle.FlightPaths.Where(p => p.Points.Count > 0))
+            {
+                if (display.ContainsKey(path))
+                {
+                    continue;
+                }
+
+                var points = KmlPathInfo.DisplayPoints(path);
+                display.Add(path, points);
+                _onPathThinned?.Invoke(new ThinnedPath(vehicle.Name, path.SourceName, path.Type, path.Points.Count, points.Count));
+            }
+        }
+
+        return display;
+    }
+
     /// <param name="extrude">
     /// false for the planned folder: its curtain is the separate toggle folder "Flight path curtain" (N-39a).
     /// Actual paths keep the extruded LineString (the plan has a curtain layer only for the planned path).
     /// </param>
-    private XElement TrajectoryFolder(Mission mission, string name, Func<FlightPath, bool> include, string note, bool extrude)
+    private XElement TrajectoryFolder(
+        Mission mission,
+        Dictionary<FlightPath, IReadOnlyList<TrajectoryPoint>> display,
+        string name,
+        Func<FlightPath, bool> include,
+        string note,
+        bool extrude)
     {
         var folder = K("Folder", K("name", name), K("description", note));
         foreach (var vehicle in OrderedVehicles(mission))
@@ -97,8 +142,8 @@ public sealed class MissionKmlBuilder : IMissionKmlBuilder
             foreach (var path in paths)
             {
                 vehicleFolder.Add(
-                    AppendDensificationNote(PlannedPathGenerator.CreatePlacemark(vehicle, path, extrude), path),
-                    AppendDensificationNote(GxTrackGenerator.CreatePlacemark(vehicle, path, mission.Clock), path));
+                    AppendDensificationNote(PlannedPathGenerator.CreatePlacemark(vehicle, path, extrude, display.GetValueOrDefault(path)), path),
+                    AppendDensificationNote(GxTrackGenerator.CreatePlacemark(vehicle, path, mission.Clock, display.GetValueOrDefault(path)), path));
             }
 
             folder.Add(vehicleFolder);

@@ -561,23 +561,44 @@ public class DynamicKmlBuilderTests
     [Fact]
     public void History_TwoThousandPointsPerVehicle_StaysWithinBudget_AndPathIsWrittenOnce()
     {
-        var kml = History([Starship(Path(TrajectoryType.Actual, 2000)), SuperHeavy(Path(TrajectoryType.Actual, 2000))]);
+        var paths = new[] { Path(TrajectoryType.Actual, 2000), Path(TrajectoryType.Actual, 2000) };
+        var kml = History([Starship(paths[0]), SuperHeavy(paths[1])]);
 
         Assert.True(Encoding.UTF8.GetByteCount(kml) <= HistoryBudgetBytes, $"history is {Encoding.UTF8.GetByteCount(kml)} bytes");
         Assert.Equal(2, Parse(kml).Descendants(K + "LineString").Count());
-        Assert.Equal(4000, Parse(kml).Descendants(K + "coordinates").Sum(c => c.Value.Split(' ').Length));
+        // N-20: the line is the thinned display line (a subset), written once per path.
+        var display = paths.Sum(DisplayCount);
+        Assert.InRange(display, 4, 3999);
+        Assert.Equal(display, Parse(kml).Descendants(K + "coordinates").Sum(c => c.Value.Split(' ').Length));
     }
 
     [Fact]
     public void Planned_LargePaths_StayWithinBudget_AndEachPointIsWrittenOncePerLayer()
     {
-        var kml = Planned(mission: Mission([Starship(Path(TrajectoryType.Planned, 3000)), SuperHeavy(Path(TrajectoryType.Planned, 3000))]));
+        var paths = new[] { Path(TrajectoryType.Planned, 3000), Path(TrajectoryType.Planned, 3000) };
+        var kml = Planned(mission: Mission([Starship(paths[0]), SuperHeavy(paths[1])]));
+        var display = paths.Sum(DisplayCount);
 
         Assert.True(Encoding.UTF8.GetByteCount(kml) <= PlannedBudgetBytes, $"planned is {Encoding.UTF8.GetByteCount(kml)} bytes");
-        // Each point once in the path line and once in its curtain (N-39a toggle layer); nothing else repeats it.
+        // Each display point (N-20 thinned) once in the path line and once in its curtain (N-39a toggle layer); nothing else repeats it.
         var doc = Parse(kml);
-        Assert.Equal(6000, TopFolder(doc, KmlLod.FolderName.PlannedTrajectory).Descendants(K + "coordinates").Sum(c => c.Value.Split(' ').Length));
-        Assert.Equal(12000, doc.Descendants(K + "LineString").Sum(ls => ls.Element(K + "coordinates")!.Value.Split(' ').Length));
+        Assert.Equal(display, TopFolder(doc, KmlLod.FolderName.PlannedTrajectory).Descendants(K + "coordinates").Sum(c => c.Value.Split(' ').Length));
+        Assert.Equal(2 * display, doc.Descendants(K + "LineString").Sum(ls => ls.Element(K + "coordinates")!.Value.Split(' ').Length));
+    }
+
+    private static int DisplayCount(FlightPath path) => TrackThinner.Thin(path.Points, KmlLod.TrailToleranceMeters).Count;
+
+    [Fact]
+    public void Planned_PathLineAndCurtain_UseIdenticalThinnedCoordinates()
+    {
+        var path = Path(TrajectoryType.Planned, 3000);
+        var doc = Parse(Planned(mission: Mission([Starship(path)])));
+
+        var line = TopFolder(doc, KmlLod.FolderName.PlannedTrajectory).Descendants(K + "coordinates").Single().Value;
+        var curtain = TopFolder(doc, KmlLod.FolderName.FlightCurtain).Descendants(K + "coordinates").Single().Value;
+
+        Assert.Equal(line, curtain);
+        Assert.True(line.Split(' ').Length < path.Points.Count, "the display line must be thinned");
     }
 
     [Fact]

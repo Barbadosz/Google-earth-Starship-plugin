@@ -87,7 +87,7 @@ public sealed class MissionKmzPipeline
         ArgumentNullException.ThrowIfNull(output);
 
         var (mission, densified) = await LoadAndPrepareCoreAsync(options, ct).ConfigureAwait(false);
-        var docKml = new MissionKmlBuilder(_densification, densified).Build(mission);
+        var docKml = new MissionKmlBuilder(_densification, densified, LogThinned).Build(mission);
         var files = CollectAssets(mission, options.AssetsDirectory);
         _logger.Debug("KML built: {Characters} characters, {FileCount} attached files", docKml.Length, files.Count);
 
@@ -106,6 +106,11 @@ public sealed class MissionKmzPipeline
             entries,
             size);
     }
+
+    private void LogThinned(MissionKmlBuilder.ThinnedPath t) =>
+        _logger.Debug(
+            "Thinned path {Vehicle}/{Source}: {SourcePoints} -> {DisplayPoints} points (tolerance {ToleranceMeters} m)",
+            t.VehicleName, t.SourceName, t.SourcePoints, t.DisplayPoints, Kml.Generators.KmlLod.TrailToleranceMeters);
 
     /// <summary>Loads the mission and prepares every path for KML (densified, orientation filled, model path set).</summary>
     public async Task<Mission> LoadAndPrepareAsync(CliOptions options, CancellationToken ct = default) =>

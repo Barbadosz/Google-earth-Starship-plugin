@@ -66,7 +66,7 @@ public static class VehicleGenerator
             K("description", Cdata(
                 $"<p>Position along the {Html(KmlPathInfo.Kind(path))} path. {Html(KmlPathInfo.Label(path))}</p>"
                 + $"<p>{Html(QualityNote(path.Quality))}<br/>Source: {Html(path.SourceName)}"
-                + (KmlPathInfo.HasAngles(path) ? $"<br/>{Html(KmlPathInfo.OrientationNote)}" : string.Empty)
+                + (model is not null && KmlPathInfo.HasAngles(path) ? $"<br/>{Html(KmlPathInfo.OrientationNote)}" : string.Empty)
                 + "</p>")),
             GxTrackGenerator.Span(path, clock, vehicle.Name));
         if (styleId is not null)
@@ -81,7 +81,7 @@ public static class VehicleGenerator
 
         placemark.Add(
             KmlPathInfo.Extended(vehicle, path),
-            GxTrackGenerator.CreateTrack(path, clock, model, vehicle.Name));
+            GxTrackGenerator.CreateTrack(path, clock, model, vehicle.Name, includeAngles: model is not null));
         return placemark;
     }
 

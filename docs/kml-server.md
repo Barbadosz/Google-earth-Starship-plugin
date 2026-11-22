@@ -10,8 +10,8 @@ planned data, not from telemetry ([simulator.md](simulator.md)).
 ```
 /kml/master?mission=<code>
   NetworkLink planned-link   -> /kml/planned?mission=<code>   refresh 60 s
-  NetworkLink history-link   -> /kml/history?mission=<code>   refresh 1 s
-  NetworkLink live-link      -> /kml/live?mission=<code>      refresh 1 s
+  NetworkLink history-link   -> /kml/history?mission=<code>   refresh 0.5 s
+  NetworkLink live-link      -> /kml/live?mission=<code>      refresh 0.5 s
 ```
 
 The master only holds the three links, a description (with the SIMULATED notice for a simulated mission) and the
@@ -25,7 +25,7 @@ means a refresh never moves the camera or the time slider.
 | Document | Link name | Content |
 |---|---|---|
 | planned | "Planned trajectory & events" | Folders "Mission Information", "Planned Trajectory", "Flight path curtain", "Mission Events", "Event labels". |
-| history | "Actual trajectory (SIMULATED)" | Folder "Actual Trajectory": the stored actual (simulated) path per vehicle, decimated to at most `History:MaxPointsPerVehicle` (2000) points per vehicle, first and last kept. Empty when there is no actual path. |
+| history | "Actual trajectory (SIMULATED)" | Folder "Actual Trajectory": the stored actual (simulated) path per vehicle, decimated to at most `History:MaxPointsPerVehicle` (10000) points per vehicle, first and last kept. Empty when there is no actual path. |
 | live | "Vehicles (SIMULATED, live)" | Folder "Vehicles": per vehicle a 3D model and an icon at the latest sample, with a balloon. Not time-stamped, so the time slider never hides them. A vehicle marked **STALE** has " - STALE" in its name (rule in [simulator.md](simulator.md)). |
 
 For a non-simulated mission the link names carry no "(SIMULATED)".
@@ -37,13 +37,13 @@ Configuration section `NetworkLinks` in `appsettings.json` (seconds, each in (0,
 | Key | Default | Meaning |
 |---|---|---|
 | `PlannedRefreshSeconds` | 60 | Interval of the planned link. |
-| `HistoryRefreshSeconds` | 1 | Interval of the history link. |
-| `LiveRefreshSeconds` | 1 | Interval of the live link. |
-| `MinRefreshPeriodSeconds` | 1 | `minRefreshPeriod` in every child document's NetworkLinkControl; no interval may be smaller. |
+| `HistoryRefreshSeconds` | 0.5 | Interval of the history link (sub-second allowed, written as an invariant decimal, e.g. `0.5`). |
+| `LiveRefreshSeconds` | 0.5 | Interval of the live link (sub-second allowed). |
+| `MinRefreshPeriodSeconds` | 0.25 | `minRefreshPeriod` in every child document's NetworkLinkControl; no interval may be smaller. |
 
 Google Earth Pro takes the intervals from the master, and only when the master link is loaded. After changing them, refresh the master link (right-click > Refresh; not verified in GE: if the new intervals do not appear, remove and re-add the Network Link); the running child links keep their old interval.
 
-Cost of a 1 s refresh (N-48): the live document is about 3-7 KB. The history document grows with the samples, capped by `History:MaxPointsPerVehicle` (2000 per vehicle): measured about 29 bytes per point (a 1340-point diagnosis sample was 44 KB, 13.6 KB gzipped), so a full `demo-ift` run with two vehicles at the cap is roughly 130 KB raw and about 40 KB gzipped. The history document is built per request (no caching, `no-store`), reading the samples from the local SQLite database; this is cheap on one machine. If it ever becomes heavy, raise `HistoryRefreshSeconds`.
+Cost of a refresh (N-48, N-53): the live document is about 3-7 KB. The history document grows with the samples, capped by `History:MaxPointsPerVehicle` (10000 per vehicle; a 1 h flight at 0.5 s is about 7200 rows, and above the cap the decimation picks shift between refreshes): measured about 29 bytes per point (a 1340-point diagnosis sample was 44 KB, 13.6 KB gzipped), so about 29 bytes per kept point. The display lines (path, curtain) are thinned (8 m tolerance), so only the full-resolution model and icon tracks grow with the cap. Estimate, not measured: two vehicles at the 10000-point cap (the old 2000-point cap gave about 130 KB raw / 40 KB gzipped) would be up to about 600 KB raw and 200 KB gzipped; a 1 h run at 0.5 s (about 7200 points per vehicle) about 400 KB raw and 130 KB gzipped. The history document is built per request (no caching, `no-store`), reading the samples from the local SQLite database; this is cheap on one machine. If it ever becomes heavy, raise `HistoryRefreshSeconds`.
 
 `Live:StaleAfterSeconds` (default 15) and `History:MaxPointsPerVehicle` are separate sections. Invalid values stop the
 server at start with a message.

@@ -60,6 +60,27 @@ public class PathReplaySamplerTests
     }
 
     [Fact]
+    public void DefaultSampleInterval_IsHalfSecond_MatchingTheLiveRefresh()
+    {
+        Assert.Equal(0.5, new SimulationOptions().SampleIntervalSeconds);
+    }
+
+    [Fact]
+    public void HalfSecondInterval_GivesTwiceTheSamples_AllStillSimulated()
+    {
+        var samples = Create(interval: 0.5).Advance(1000, TestData.Start);
+        var ship = samples.Where(s => s.Vehicle == VehicleType.Starship).ToList();
+
+        Assert.Equal(41, ship.Count); // 0..20 s every 0.5 s
+        Assert.Equal(0.5, (ship[1].TimestampUtc - ship[0].TimestampUtc).TotalSeconds);
+        Assert.All(samples, s =>
+        {
+            Assert.Equal(DataQuality.Simulated, s.Quality);
+            Assert.True(s.IsEstimated);
+        });
+    }
+
+    [Fact]
     public void FinalSampleIsAddedWhenLastPointIsOffTheGrid()
     {
         var sampler = Create(interval: 3);

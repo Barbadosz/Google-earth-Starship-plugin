@@ -9,7 +9,7 @@ Tick each box, and write anything odd in the **Findings** section at the end.
 All data here is **simulated** (quality `Simulated`, source `Internal simulator`). It is a replay of the planned path,
 not telemetry. Background: [api.md](api.md), [kml-server.md](kml-server.md), [simulator.md](simulator.md).
 
-Defaults used below (from `appsettings.json`): live link refresh 1 s, history link 1 s, planned link 60 s, stale
+Defaults used below (from `appsettings.json`): live link refresh 0.5 s, history link 0.5 s, planned link 60 s, stale
 threshold 15 s. If you changed `NetworkLinks` values, use yours. Google Earth takes the intervals from the master, so after a change refresh the master link (right-click > Refresh; not verified in GE: if the new intervals do not appear, remove and re-add the Network Link).
 
 ## 0. Prepare
@@ -64,22 +64,22 @@ threshold 15 s. If you changed `NetworkLinks` values, use yours. Google Earth ta
 2. Zoom in on the launch site (close, or you see only the icons). Watch for at least 2 minutes after liftoff.
 
 - **Look for:** after the countdown the Starship and the Super Heavy move along the
-  blue path. The **orange actual track** (simulated data is drawn in the orange estimated style, never green; green is only for published or measured data) grows behind each vehicle. The vehicle position updates about every second
-  (live link) and the orange track about every second (history link). The camera and the time slider do **not** move on
+  blue path. The **orange actual track** (simulated data is drawn in the orange estimated style, never green; green is only for published or measured data) grows behind each vehicle. The vehicle position updates about every 0.5 s
+  (live link) and the orange track about every 0.5 s (history link). The camera and the time slider do **not** move on
   a refresh (`flyToView=0`); you can navigate freely and the view stays where you put it. The 3D model is drawn only
   close up (Region `minLodPixels` 2000, so zoom in until the vehicle is large); from far away only the icon is visible.
 - **Wrong:** the camera jumps back to the launch site, the slider changes, the vehicle does not move, the orange line
   does not grow, or the vehicle is shown twice.
 - [ ] The vehicles move and the orange actual track grows.
 - [ ] The camera does not jump on any refresh (watch at least 3 live refreshes).
-- [ ] The live position and the orange track update about every second (or your configured values).
-- [ ] The history refresh interval is the configured `NetworkLinks:HistoryRefreshSeconds` (1 s by default).
+- [ ] The live position and the orange track update about every 0.5 s (or your configured values).
+- [ ] The history refresh interval is the configured `NetworkLinks:HistoryRefreshSeconds` (0.5 s by default since N-53; see section 10).
 - [ ] The vehicle balloon (click the model or icon) shows the data and the SIMULATED notice.
 
 ## 3. Speeds (N-34)
 
 Do this on the same run (Stop and Start again if it has ended). The slider steps are 0.1, 0.25, 0.5, 1, 2, 5, 10, 20,
-50, 100. The hint under the slider shows how much flight time passes per 1 s refresh (for example 10x = 10 s).
+50, 100. The hint under the slider shows how much flight time passes per 0.5 s refresh (for example 10x = 5 s).
 
 1. Start at `0.5x`. Watch two or three live refreshes (about 0.5 s of flight per refresh: small steps).
 2. While it runs, switch to `10x`, then to `100x`.
@@ -213,6 +213,40 @@ site.
 - [ ] Ctrl+C stops the server cleanly.
 - [ ] GE shows an error for the links while the server is down, and recovers after the next start.
 - [ ] I noticed that auto-start rewrites the simulated samples in `data/starship.db`.
+
+## 10. Sub-second refresh (N-53)
+
+The defaults are now `NetworkLinks:LiveRefreshSeconds` = `HistoryRefreshSeconds` = 0.5, `MinRefreshPeriodSeconds` = 0.25,
+and the simulator makes one sample every `Simulation:SampleIntervalSeconds` = 0.5 s (otherwise a faster refresh would
+show the same position twice). GE reads the intervals only when the master link is loaded, so remove and re-add
+`http://127.0.0.1:8080/kml/master` after every change.
+
+Try each value, one run each (speed 1x, zoom close to a vehicle, at least 2 minutes):
+
+1. 0.5 s: the default. Check the master in a browser: `refreshInterval` must read `0.5` (a dot, never a comma).
+2. 0.25 s: set it in `src/StarshipMissionTracker.Api/appsettings.json` (section `NetworkLinks`), or with environment
+   variables (PowerShell, then `dotnet run`):
+
+   ```
+   $env:NetworkLinks__LiveRefreshSeconds = "0.25"
+   $env:NetworkLinks__HistoryRefreshSeconds = "0.25"
+   $env:Simulation__SampleIntervalSeconds = "0.25"
+   $env:History__MaxPointsPerVehicle = "20000"
+   ```
+
+   The history cap is needed because a 1 h flight at 0.25 s is about 14400 rows; above the cap the track thinning picks
+   shift between refreshes and the orange track may flicker.
+3. Back to 1 s for comparison (`1` for all three).
+
+- **Look for:** is the vehicle motion smoother than at 1 s; does the model, the orange track or the planned line flicker
+  more than at 1 s; the Google Earth CPU use (Task Manager) and the server console; and whether GE really refreshes at the
+  set rate or silently clamps to 1 s (count refreshes in the server log, or open `/kml/live` and watch the `r=` cookie
+  grow by how much per second).
+- **Wrong:** the vehicle stutters or stalls, the flicker gets clearly worse, GE freezes or the CPU stays high.
+- [ ] 0.5 s: smoothness compared with 1 s (better / same / worse).
+- [ ] 0.5 s: flicker compared with 1 s (better / same / worse).
+- [ ] 0.25 s: the same two points, and the CPU use.
+- [ ] GE honours the interval (the `r=` cookie grows about 2x or 4x per second) or clamps to 1 s.
 
 ## Findings
 

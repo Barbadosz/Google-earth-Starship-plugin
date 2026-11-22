@@ -170,7 +170,7 @@ public partial class KmlEndpointsTests
         Assert.Equal("http://127.0.0.1:8080/assets/models", app.Kml.Assets!.ModelBaseUrl);
         Assert.Equal("http://127.0.0.1:8080/assets/icons", app.Kml.Assets.IconBaseUrl);
         Assert.Contains("http://127.0.0.1:8080/assets/icons/starship.png", body, StringComparison.Ordinal);
-        Assert.Equal(TimeSpan.FromSeconds(1), app.Kml.MinRefresh);
+        Assert.Equal(TimeSpan.FromSeconds(0.25), app.Kml.MinRefresh);
     }
 
     [Fact]

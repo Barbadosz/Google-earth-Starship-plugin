@@ -220,7 +220,7 @@ public class M2KmlDataAttackTests
     }
 
     [Fact]
-    public async Task History_DefaultCap2000_HoldsWhenTheRunHasMoreSamples()
+    public async Task History_DefaultCap10000_HoldsWhenTheRunHasMoreSamples()
     {
         await using var host = AttackHost.Start(new Dictionary<string, string?> { ["Simulation:SampleIntervalSeconds"] = "0.5" });
         await host.StartAsync(speed: 100, countdown: 0);
@@ -231,7 +231,7 @@ public class M2KmlDataAttackTests
         var counts = doc.Descendants(AttackHost.K("LineString")).Elements(AttackHost.K("coordinates"))
             .Select(c => c.Value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length).ToList();
         Assert.Contains(counts, c => c > 1000);
-        Assert.All(counts, c => Assert.True(c <= 2000, $"{c} points"));
+        Assert.All(counts, c => Assert.True(c <= 10_000,$"{c} points"));
     }
 
     [Fact]

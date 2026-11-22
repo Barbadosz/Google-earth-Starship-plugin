@@ -6,7 +6,7 @@ public sealed class HistoryOptions
     public const string SectionName = "History";
 
     /// <summary>Maximum points per vehicle in the actual LineString (decimated; first and last kept, nothing inserted).</summary>
-    public int MaxPointsPerVehicle { get; set; } = 2000;
+    public int MaxPointsPerVehicle { get; set; } = 10_000;
 
     /// <summary>Null when valid, else the reason.</summary>
     public string? Validate() =>

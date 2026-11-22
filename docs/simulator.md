@@ -29,7 +29,7 @@ The status JSON of every call is described in [api.md](api.md).
 ## Assumptions
 
 - **Path replay sampler.** For every vehicle with a planned path, a sample is produced at each mission offset
-  `n * SampleIntervalSeconds` (default 1 s), each offset exactly once and in order, starting at the first planned
+  `n * SampleIntervalSeconds` (default 0.5 s, to match the 0.5 s live refresh), each offset exactly once and in order, starting at the first planned
   point and ending with one final sample exactly at the last planned point (so a vehicle can finish earlier than
   another, for example Super Heavy after landing). The position is interpolated along the planned path; heading and
   pitch come from the path or are derived from its geometry; velocity comes from the path or, if missing, the
@@ -50,10 +50,10 @@ The status JSON of every call is described in [api.md](api.md).
 ## Speed presets and jump size (control page)
 
 The control page slider has ten steps. The hint under it says how much flight time passes per Google Earth refresh of
-the live link (1 s, the default `NetworkLinks:LiveRefreshSeconds`): `speed * 1` seconds of flight per refresh, that is
+the live link (0.5 s, the default `NetworkLinks:LiveRefreshSeconds`): `speed * 0.5` seconds of flight per refresh, that is
 how far a vehicle jumps between two updates in Google Earth.
 
-| Speed | Flight time per 1 s refresh |
+| Speed | Flight time per 0.5 s refresh |
 |---|---|
 | 0.1x | 0.1 s |
 | 0.25x | 0.25 s |
@@ -66,7 +66,7 @@ how far a vehicle jumps between two updates in Google Earth.
 | 50x | 50 s |
 | 100x | 100 s |
 
-The page's refresh value is a fixed 1 s (`LIVE_REFRESH_S`) in the script; if you change `NetworkLinks:LiveRefreshSeconds`, the real jump
+The table shows the jump per refresh at the default 0.5 s. The page's refresh value is a fixed 0.5 s (`LIVE_REFRESH_S`) in the script; if you change `NetworkLinks:LiveRefreshSeconds`, the real jump
 size changes but the hint does not. The status JSON also gives `speedMin` and `speedMax` (0.1 and 100).
 
 ## Pause and the stale rule
@@ -92,7 +92,7 @@ Section `Simulation` (defaults in `appsettings.json`):
 | Key | Default | Meaning |
 |---|---|---|
 | `DefaultSpeed` | 10 | Speed when a start request has none; also used by auto-start. |
-| `SampleIntervalSeconds` | 1 | Spacing of the samples on the mission axis (finite, > 0). |
+| `SampleIntervalSeconds` | 0.5 | Spacing of the samples on the mission axis (finite, > 0). |
 | `TickMilliseconds` | 250 | Wake-up period (>= 1). |
 | `MaxConsecutiveFailures` | 3 | Failing ticks in a row before the run is stopped (>= 1). |
 | `AutoStart` | false | Start a run automatically after the database is ready. |

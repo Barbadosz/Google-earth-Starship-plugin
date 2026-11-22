@@ -7,8 +7,8 @@ public sealed class SimulationOptions
 
     public double DefaultSpeed { get; set; } = 10;
 
-    /// <summary>Spacing of the samples on the mission axis.</summary>
-    public double SampleIntervalSeconds { get; set; } = 1;
+    /// <summary>Spacing of the samples on the mission axis (default matches the 0.5 s live refresh).</summary>
+    public double SampleIntervalSeconds { get; set; } = 0.5;
 
     /// <summary>Wake-up period of the hosted service (wall clock).</summary>
     public int TickMilliseconds { get; set; } = 250;

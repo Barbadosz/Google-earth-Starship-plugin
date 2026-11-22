@@ -88,6 +88,35 @@ public class DynamicKmlBuilderTests
         }
     }
 
+    [Theory]
+    [InlineData(0.5, "0.5")]
+    [InlineData(0.25, "0.25")]
+    [InlineData(1, "1")]
+    public void Master_SubSecondRefresh_IsInvariantDecimal_EvenUnderCommaCulture(double seconds, string expected)
+    {
+        var previous = CultureInfo.CurrentCulture;
+        CultureInfo.CurrentCulture = new CultureInfo("hu-HU");
+        try
+        {
+            var interval = TimeSpan.FromSeconds(seconds);
+            var settings = new NetworkLinkSettings(TimeSpan.FromSeconds(60), interval, interval, TimeSpan.FromSeconds(0.25));
+            var kml = _builder.BuildMaster(Info(), Urls, settings);
+            var links = Parse(kml).Descendants(K + "NetworkLink").ToList();
+
+            Assert.Equal("60", links[0].Element(K + "Link")!.Element(K + "refreshInterval")!.Value);
+            Assert.Equal(expected, links[1].Element(K + "Link")!.Element(K + "refreshInterval")!.Value);
+            Assert.Equal(expected, links[2].Element(K + "Link")!.Element(K + "refreshInterval")!.Value);
+            AssertValid(kml);
+
+            var child = Parse(_builder.BuildLive(Info(), [Live(Starship(Path(TrajectoryType.Planned, 2)), Sample())], Now, Assets, 1, TimeSpan.FromSeconds(0.25)));
+            Assert.Equal("0.25", child.Descendants(K + "minRefreshPeriod").Single().Value);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previous;
+        }
+    }
+
     [Fact]
     public void Master_OnlyLookAtHasTime_NoCookie_AndLookAtOverLaunchSite()
     {

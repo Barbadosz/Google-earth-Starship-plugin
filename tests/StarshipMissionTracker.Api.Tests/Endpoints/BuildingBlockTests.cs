@@ -59,13 +59,16 @@ public class BuildingBlockTests
         Assert.Null(options.Validate());
         var settings = options.ToSettings();
         Assert.Equal(TimeSpan.FromSeconds(60), settings.PlannedRefresh);
-        Assert.Equal(TimeSpan.FromSeconds(1), settings.HistoryRefresh);
-        Assert.Equal(TimeSpan.FromSeconds(1), settings.LiveRefresh);
-        Assert.Equal(TimeSpan.FromSeconds(1), settings.MinRefreshPeriod);
+        Assert.Equal(TimeSpan.FromSeconds(0.5), settings.HistoryRefresh);
+        Assert.Equal(TimeSpan.FromSeconds(0.5), settings.LiveRefresh);
+        Assert.Equal(TimeSpan.FromSeconds(0.25), settings.MinRefreshPeriod);
     }
 
     [Theory]
-    [InlineData(5, 1, null)]
+    [InlineData(5, 0.25, null)]
+    [InlineData(0.5, 0.25, null)]
+    [InlineData(0.25, 0.25, null)]
+    [InlineData(0.2, 0.25, "MinRefreshPeriodSeconds")]
     [InlineData(0.5, 1, "MinRefreshPeriodSeconds")]
     [InlineData(0, 1, "LiveRefreshSeconds")]
     [InlineData(double.NaN, 1, "LiveRefreshSeconds")]
@@ -104,7 +107,7 @@ public class BuildingBlockTests
 
     [Theory]
     [InlineData("Live:StaleAfterSeconds", "5")]
-    [InlineData("NetworkLinks:LiveRefreshSeconds", "0.5")]
+    [InlineData("NetworkLinks:LiveRefreshSeconds", "0.1")]
     [InlineData("History:MaxPointsPerVehicle", "1")]
     public async Task InvalidOptions_FailAtStartup(string key, string value)
     {
